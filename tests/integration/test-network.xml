@@ -1,0 +1,12 @@
+<network>
+  <name>go-dhcpd-test-net</name>
+  <bridge name='virbr-dhcpd' stp='on' delay='0'/>
+  <domain name='dhcpd.test'/>
+  <!-- Isolated network - no external connectivity -->
+  <forward mode='none'/>
+  <!-- Disable libvirt's built-in DHCP and DNS -->
+  <dns enable='no'/>
+  <ip address='192.168.100.1' netmask='255.255.255.0'>
+    <!-- No DHCP range - we're testing our own DHCP server -->
+  </ip>
+</network>

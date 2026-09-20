@@ -1,0 +1,60 @@
+{
+  // Global DHCP server configuration
+  //
+  // Note: This daemon uses raw sockets (AF_PACKET) to capture broadcast DHCP packets
+  // from clients without IP addresses. This requires root privileges or CAP_NET_RAW.
+  //
+  "global": {
+    "lease_time": 86400,               // 24 hours in seconds
+    "netbios_node_type": 8,            // 8 = H-node (recommended)
+    "ping_timeout": 1000,              // milliseconds
+    "ping_retries": 2,
+    "database_path": "/var/lib/go-dhcpd/dhcpd.db",
+    "listen_address": "192.168.1.1",   // IP address for UDP port 67 (unicast/relay traffic)
+    "listen_interface": "",            // Network interface to bind to (e.g., "eth0", "ens33")
+                                       // Leave empty to listen on all interfaces
+                                       // Restricts both raw socket and UDP listeners
+    "api_port": 18467
+  },
+
+  // Subnet definitions
+  "subnets": [
+    {
+      "network": "192.168.1.0",
+      "netmask": "255.255.255.0",
+      // Dynamic IP allocation ranges
+      // Each range specifies a start and end address
+      // Example: 192.168.1.100 - 192.168.1.163 provides 64 usable IP addresses
+      "dynamic_ranges": [
+        {
+          "start_address": "192.168.1.100",
+          "end_address": "192.168.1.163"
+        }
+      ],
+      "enable_bootp": false,
+      "domain_name_servers": ["192.168.1.1", "8.8.8.8"],
+      "domain_name": "example.local",
+      "domain_search": ["example.local", "example.com"],
+      "interface_mtu": 1500,
+      "ntp_servers": ["192.168.1.1"],
+      "routers": ["192.168.1.1"],
+      "netbios_name_servers": ["192.168.1.10"],
+      "netbios_dd_servers": ["192.168.1.10"],
+      "netbios_node_type": 8
+    }
+  ],
+
+  // Static host assignments
+  "static": [
+    {
+      "mac_address": "aa:bb:cc:dd:ee:ff",
+      "ip_address": "192.168.1.10",
+      "hostname": "server1.example.local"
+    },
+    {
+      "mac_address": "11:22:33:44:55:66",
+      "ip_address": "192.168.1.11",
+      "hostname": "server2.example.local"
+    }
+  ]
+}

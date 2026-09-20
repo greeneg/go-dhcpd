@@ -1,0 +1,18 @@
+# Ignore VM artifacts and temporary files
+*.qcow2
+*.iso
+*.pcap
+*.log
+
+# Ignore SSH keys if generated
+*.pem
+*.key
+id_rsa*
+
+# Ignore backup files
+*~
+*.bak
+*.swp
+
+# Ignore downloaded ISOs
+fedora-*.iso

@@ -34,7 +34,8 @@
       // (see Makefile's INSTALL_PREFIX). Set it explicitly to override.
       "settings": {
         // Defaults to the config file passed on the command line if omitted
-        "config_path": "/etc/go-dhcpd/config.json5"
+        // only set this if you want to override the default config file path
+        // "config_path": "/etc/go-dhcpd/config.json5"
       }
     }
   },

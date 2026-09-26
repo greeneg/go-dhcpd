@@ -233,13 +233,8 @@ export SERVER_API_PASSWORD='set-this-to-the-password-used-by-setup-server.sh'
 # /config and /leases require HTTP Basic Auth; /health and /metrics are
 # unauthenticated.
 curl http://192.168.100.10:18467/health
-<<<<<<< HEAD
-curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/config
-curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/leases
-=======
 curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/config
 curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/leases
->>>>>>> 456499152dcb36910c0061b1e4686cc22e608404
 curl http://192.168.100.10:18467/metrics
 
 # Run full test suite

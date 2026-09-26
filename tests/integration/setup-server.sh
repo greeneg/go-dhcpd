@@ -93,7 +93,6 @@ if ! id -u go-dhcpd &>/dev/null; then
     useradd -r -s /bin/bash -d /var/lib/go-dhcpd -m go-dhcpd
 fi
 
-<<<<<<< HEAD
 # Create a dedicated local account for authenticating against the API.
 # This is a test-only credential for the isolated integration test VM;
 # it is not used for anything outside this fixture.
@@ -113,14 +112,6 @@ cat > /etc/pam.d/go-dhcpd << 'EOF'
 auth       include      system-auth
 account    include      system-auth
 EOF
-=======
-# Create API integration test user
-log_info "Creating API integration test user..."
-if ! id -u "$SERVER_API_USER" &>/dev/null; then
-    useradd -m -s /bin/bash "$SERVER_API_USER"
-fi
-echo "${SERVER_API_USER}:${SERVER_API_PASSWORD}" | chpasswd
->>>>>>> 456499152dcb36910c0061b1e4686cc22e608404
 
 # Create directories
 log_info "Creating directories..."
@@ -147,7 +138,6 @@ cat > /etc/go-dhcpd/config.json5 << EOF
     "api_port": 18467
   },
 
-<<<<<<< HEAD
   // Authorize the dedicated API test account created above (root is
   // always authorized) to reach authenticated endpoints like /config
   // and /leases.
@@ -156,12 +146,6 @@ cat > /etc/go-dhcpd/config.json5 << EOF
     "allowed_groups": []
   },
   
-=======
-  "auth": {
-    "allowed_users": ["${SERVER_API_USER}"]
-  },
-
->>>>>>> 456499152dcb36910c0061b1e4686cc22e608404
   "subnets": [
     {
       "network": "192.168.100.0",

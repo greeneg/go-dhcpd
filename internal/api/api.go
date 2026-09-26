@@ -6,22 +6,27 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/greeneg/go-dhcpd/internal/allocator"
 	"github.com/greeneg/go-dhcpd/internal/config"
 	"github.com/greeneg/go-dhcpd/internal/db"
 	"github.com/greeneg/go-dhcpd/internal/dhcp"
 	"github.com/greeneg/go-dhcpd/internal/logger"
+	"github.com/greeneg/go-dhcpd/internal/plugin"
+	"github.com/greeneg/go-dhcpd/internal/version"
 )
 
 // API represents the web API server
 type API struct {
-	config *config.Config
-	db     *db.Database
-	dhcp   *dhcp.Server
-	engine *gin.Engine
+	config  *config.Config
+	db      *db.Database
+	dhcp    *dhcp.Server
+	plugins *plugin.Manager
+	alloc   *allocator.Allocator
+	engine  *gin.Engine
 }
 
 // NewAPI creates a new API server
-func NewAPI(cfg *config.Config, database *db.Database, dhcpServer *dhcp.Server) *API {
+func NewAPI(cfg *config.Config, database *db.Database, dhcpServer *dhcp.Server, pluginManager *plugin.Manager, alloc *allocator.Allocator) *API {
 	// Set Gin to release mode
 	gin.SetMode(gin.ReleaseMode)
 
@@ -30,10 +35,12 @@ func NewAPI(cfg *config.Config, database *db.Database, dhcpServer *dhcp.Server) 
 	engine.Use(loggerMiddleware())
 
 	api := &API{
-		config: cfg,
-		db:     database,
-		dhcp:   dhcpServer,
-		engine: engine,
+		config:  cfg,
+		db:      database,
+		dhcp:    dhcpServer,
+		plugins: pluginManager,
+		alloc:   alloc,
+		engine:  engine,
 	}
 
 	api.setupRoutes()
@@ -52,6 +59,18 @@ func (a *API) setupRoutes() {
 
 	// Configuration endpoint
 	a.engine.GET("/config", a.configHandler)
+
+	// Subnet endpoints (backed by the config-provider plugin)
+	a.engine.GET("/subnets", a.subnetsHandler)
+	a.engine.POST("/subnets", a.addSubnetHandler)
+	a.engine.PUT("/subnets/:network", a.updateSubnetHandler)
+	a.engine.DELETE("/subnets/:network", a.deleteSubnetHandler)
+
+	// Static host endpoints (backed by the config-provider plugin)
+	a.engine.GET("/static", a.staticHostsHandler)
+	a.engine.POST("/static", a.addStaticHostHandler)
+	a.engine.PUT("/static/:mac", a.updateStaticHostHandler)
+	a.engine.DELETE("/static/:mac", a.deleteStaticHostHandler)
 
 	// Leases endpoints
 	a.engine.GET("/leases", a.leasesHandler)
@@ -138,7 +157,151 @@ func (a *API) databaseStatsHandler(c *gin.Context) {
 
 // Configuration handler
 func (a *API) configHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, a.config)
+	subnets, err := a.plugins.GetSubnets()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	staticHosts, err := a.plugins.GetStaticHosts()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"global":  a.config.Global,
+		"plugins": a.config.Plugins,
+		"subnets": subnets,
+		"static":  staticHosts,
+	})
+}
+
+// subnetsHandler returns the current subnets as reported by the config-provider plugin
+func (a *API) subnetsHandler(c *gin.Context) {
+	subnets, err := a.plugins.GetSubnets()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"count":   len(subnets),
+		"subnets": subnets,
+	})
+}
+
+// addSubnetHandler adds a new subnet via the config-provider plugin
+func (a *API) addSubnetHandler(c *gin.Context) {
+	var subnet config.SubnetConfig
+	if err := c.ShouldBindJSON(&subnet); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := a.plugins.AddSubnet(subnet); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusCreated, subnet)
+}
+
+// updateSubnetHandler replaces an existing subnet via the config-provider plugin
+func (a *API) updateSubnetHandler(c *gin.Context) {
+	var subnet config.SubnetConfig
+	if err := c.ShouldBindJSON(&subnet); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	subnet.Network = c.Param("network")
+	if err := a.plugins.UpdateSubnet(subnet); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusOK, subnet)
+}
+
+// deleteSubnetHandler removes a subnet via the config-provider plugin
+func (a *API) deleteSubnetHandler(c *gin.Context) {
+	network := c.Param("network")
+	if err := a.plugins.DeleteSubnet(network); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusOK, gin.H{"message": "subnet deleted", "network": network})
+}
+
+// staticHostsHandler returns the current static hosts as reported by the config-provider plugin
+func (a *API) staticHostsHandler(c *gin.Context) {
+	hosts, err := a.plugins.GetStaticHosts()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"count":  len(hosts),
+		"static": hosts,
+	})
+}
+
+// addStaticHostHandler adds a new static host via the config-provider plugin
+func (a *API) addStaticHostHandler(c *gin.Context) {
+	var host config.StaticHost
+	if err := c.ShouldBindJSON(&host); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := a.plugins.AddStaticHost(host); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusCreated, host)
+}
+
+// updateStaticHostHandler replaces an existing static host via the config-provider plugin
+func (a *API) updateStaticHostHandler(c *gin.Context) {
+	var host config.StaticHost
+	if err := c.ShouldBindJSON(&host); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	host.MACAddress = c.Param("mac")
+	if err := a.plugins.UpdateStaticHost(host); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusOK, host)
+}
+
+// deleteStaticHostHandler removes a static host via the config-provider plugin
+func (a *API) deleteStaticHostHandler(c *gin.Context) {
+	mac := c.Param("mac")
+	if err := a.plugins.DeleteStaticHost(mac); err != nil {
+		a.writePluginError(c, err)
+		return
+	}
+	a.refreshAllocator(c)
+	c.JSON(http.StatusOK, gin.H{"message": "static host deleted", "mac_address": mac})
+}
+
+// writePluginError maps a plugin-reported error to an HTTP response, using
+// 403 Forbidden when the plugin rejected the request because it is read-only.
+func (a *API) writePluginError(c *gin.Context, err error) {
+	if a.plugins.Capabilities().ReadOnly {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+}
+
+// refreshAllocator reloads the allocator's cached subnets/static hosts after
+// a successful write so subsequent allocation decisions see the new data.
+func (a *API) refreshAllocator(c *gin.Context) {
+	if err := a.alloc.Refresh(); err != nil {
+		logger.Error(fmt.Sprintf("Failed to refresh allocator after plugin write: %v", err))
+	}
 }
 
 // All leases handler
@@ -211,11 +374,12 @@ func (a *API) denyAddressesHandler(c *gin.Context) {
 // Version handler
 func (a *API) versionHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"name":       "go-dhcpd",
-		"version":    "1.0.0",
-		"author":     "Gary L. Greene Jr.",
-		"repository": "https://github.com/greeneg/go-dhcpd",
-		"license":    "Apache-2.0 <https://www.apache.org/licenses/LICENSE-2.0>",
+		"name":        "go-dhcpd",
+		"version":     version.Version,
+		"author":      version.Author,
+		"repository":  version.Repository,
+		"license":     version.License,
+		"description": version.Description,
 	})
 }
 

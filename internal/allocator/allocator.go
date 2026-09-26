@@ -5,25 +5,58 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/greeneg/go-dhcpd/internal/config"
 	"github.com/greeneg/go-dhcpd/internal/db"
 	"github.com/greeneg/go-dhcpd/internal/logger"
+	"github.com/greeneg/go-dhcpd/internal/plugin"
 )
 
 // Allocator handles IP address allocation
 type Allocator struct {
-	config *config.Config
-	db     *db.Database
+	config  *config.Config
+	db      *db.Database
+	plugins *plugin.Manager
+
+	mu      sync.RWMutex
+	subnets []config.SubnetConfig
+	static  []config.StaticHost
 }
 
-// NewAllocator creates a new IP allocator
-func NewAllocator(cfg *config.Config, database *db.Database) *Allocator {
-	return &Allocator{
-		config: cfg,
-		db:     database,
+// NewAllocator creates a new IP allocator, loading subnets and static hosts
+// from the config-provider plugin.
+func NewAllocator(cfg *config.Config, database *db.Database, plugins *plugin.Manager) (*Allocator, error) {
+	a := &Allocator{
+		config:  cfg,
+		db:      database,
+		plugins: plugins,
 	}
+	if err := a.Refresh(); err != nil {
+		return nil, fmt.Errorf("failed to load subnets/static hosts from plugin: %w", err)
+	}
+	return a, nil
+}
+
+// Refresh re-fetches subnets and static hosts from the config-provider
+// plugin. Callers should invoke this after a successful write through the
+// plugin so in-memory allocation decisions reflect the latest data.
+func (a *Allocator) Refresh() error {
+	subnets, err := a.plugins.GetSubnets()
+	if err != nil {
+		return err
+	}
+	staticHosts, err := a.plugins.GetStaticHosts()
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	a.subnets = subnets
+	a.static = staticHosts
+	a.mu.Unlock()
+	return nil
 }
 
 // AllocateIP allocates an IP address for a MAC address
@@ -55,7 +88,10 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 	}
 
 	// Find an available IP from dynamic ranges
-	for _, subnet := range a.config.Subnets {
+	a.mu.RLock()
+	subnets := a.subnets
+	a.mu.RUnlock()
+	for _, subnet := range subnets {
 		for _, dynamicRange := range subnet.DynamicRanges {
 			ip, err := a.findAvailableIPInRange(dynamicRange.StartAddress, dynamicRange.EndAddress, macAddr)
 			if err != nil {
@@ -73,7 +109,10 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 // getStaticIP checks if there's a static assignment for the MAC address
 func (a *Allocator) getStaticIP(macAddr string) net.IP {
 	macAddr = strings.ToLower(macAddr)
-	for _, static := range a.config.Static {
+	a.mu.RLock()
+	staticHosts := a.static
+	a.mu.RUnlock()
+	for _, static := range staticHosts {
 		if strings.ToLower(static.MACAddress) == macAddr {
 			// Try to parse as IP first
 			ip := net.ParseIP(static.IPAddress)

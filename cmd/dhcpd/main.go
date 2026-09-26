@@ -15,19 +15,30 @@ import (
 	"github.com/greeneg/go-dhcpd/internal/db"
 	"github.com/greeneg/go-dhcpd/internal/dhcp"
 	"github.com/greeneg/go-dhcpd/internal/logger"
+	"github.com/greeneg/go-dhcpd/internal/plugin"
+	"github.com/greeneg/go-dhcpd/internal/version"
 )
-
-const version = "0.1.0"
 
 func main() {
 	// Parse command line flags
 	configFile := flag.String("config", "/etc/go-dhcpd/config.json5", "Path to configuration file")
 	useStdout := flag.Bool("stdout", false, "Log to stdout instead of syslog")
 	showVersion := flag.Bool("version", false, "Show version and exit")
+	showHelp := flag.Bool("help", false, "Show help and exit")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("go-dhcpd version %s\n", version)
+		fmt.Printf("go-dhcpd version %s\n", version.Version)
+		fmt.Printf("Author: %s\n", version.Author)
+		fmt.Printf("Copyright: %s\n", version.Copyright)
+		fmt.Printf("Description: %s\n", version.Description)
+		fmt.Printf("Repository: %s\n", version.Repository)
+		fmt.Println("\nThis application is open-source software distributed under the terms linked below:")
+		fmt.Printf("License: %s\n", version.License)
+		os.Exit(0)
+	}
+	if *showHelp {
+		flag.Usage()
 		os.Exit(0)
 	}
 
@@ -38,7 +49,7 @@ func main() {
 	}
 	defer logger.Close()
 
-	logger.Info(fmt.Sprintf("Starting go-dhcpd version %s", version))
+	logger.Info(fmt.Sprintf("Starting go-dhcpd version %s", version.Version))
 
 	// Load configuration
 	cfg, err := config.LoadConfig(*configFile)
@@ -57,13 +68,34 @@ func main() {
 	defer database.Close()
 	logger.Info(fmt.Sprintf("Database initialized at %s", cfg.Global.DatabasePath))
 
+	// Load the config-provider plugin (supplies subnets and static leases)
+	pluginManager, err := plugin.NewManager(cfg.Plugins.ConfigProvider)
+	if err != nil {
+		logger.Critical(fmt.Sprintf("Failed to load config-provider plugin: %v", err))
+		os.Exit(1)
+	}
+	caps := pluginManager.Capabilities()
+	logger.Info(fmt.Sprintf("Config-provider plugin loaded: name=%s version=%s read_only=%t",
+		caps.Name, caps.Version, caps.ReadOnly))
+
+	// Fetch static hosts from the plugin for lease pre-seeding
+	staticHosts, err := pluginManager.GetStaticHosts()
+	if err != nil {
+		logger.Critical(fmt.Sprintf("Failed to fetch static hosts from plugin: %v", err))
+		os.Exit(1)
+	}
+
 	// Initialize static leases
-	if err := initializeStaticLeases(cfg, database); err != nil {
+	if err := initializeStaticLeases(staticHosts, database); err != nil {
 		logger.Warning(fmt.Sprintf("Failed to initialize static leases: %v", err))
 	}
 
 	// Create allocator
-	alloc := allocator.NewAllocator(cfg, database)
+	alloc, err := allocator.NewAllocator(cfg, database, pluginManager)
+	if err != nil {
+		logger.Critical(fmt.Sprintf("Failed to create IP allocator: %v", err))
+		os.Exit(1)
+	}
 	logger.Info("IP allocator initialized")
 
 	// Create DHCP server
@@ -75,7 +107,7 @@ func main() {
 	logger.Info("DHCP server created")
 
 	// Create API server
-	apiServer := api.NewAPI(cfg, database, dhcpServer)
+	apiServer := api.NewAPI(cfg, database, dhcpServer, pluginManager, alloc)
 	logger.Info(fmt.Sprintf("API server initialized on port %d", cfg.Global.APIPort))
 
 	// Start API server in goroutine
@@ -106,8 +138,8 @@ func main() {
 }
 
 // initializeStaticLeases pre-loads static host assignments into the database
-func initializeStaticLeases(cfg *config.Config, database *db.Database) error {
-	for _, static := range cfg.Static {
+func initializeStaticLeases(staticHosts []config.StaticHost, database *db.Database) error {
+	for _, static := range staticHosts {
 		// Parse IP address (or resolve hostname)
 		var ip string
 		if parsed := parseIP(static.IPAddress); parsed != "" {

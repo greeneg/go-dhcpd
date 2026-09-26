@@ -34,9 +34,11 @@ sudo journalctl -u go-dhcpd -f    # View service logs
 sudo tcpdump -i eth0 port 67 or port 68 -v  # Capture DHCP traffic
 
 # Check API endpoints
+# /config and /leases require HTTP Basic Auth (see setup-server.sh's
+# apitest account); /health and /metrics are unauthenticated.
 curl http://192.168.100.10:18467/health
-curl http://192.168.100.10:18467/config
-curl http://192.168.100.10:18467/leases
+curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/config
+curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/leases
 curl http://192.168.100.10:18467/metrics
 
 # CLIENT VM COMMANDS

@@ -227,9 +227,11 @@ ip addr show eth0        # Show IP address
 
 ```bash
 # Check server API
+# /config and /leases require HTTP Basic Auth (see setup-server.sh's
+# apitest account); /health and /metrics are unauthenticated.
 curl http://192.168.100.10:18467/health
-curl http://192.168.100.10:18467/config
-curl http://192.168.100.10:18467/leases
+curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/config
+curl -u apitest:IntegrationTest2026Pass http://192.168.100.10:18467/leases
 curl http://192.168.100.10:18467/metrics
 
 # Run full test suite
@@ -272,6 +274,10 @@ The server is configured with:
 - **DNS Servers**: 192.168.100.10, 8.8.8.8
 - **Gateway**: 192.168.100.1
 - **Domain**: dhcpd.test
+- **API auth**: authenticated endpoints (`/config`, `/leases`, etc.) accept
+  the local `apitest` account created by `setup-server.sh`
+  (`apitest:IntegrationTest2026Pass`); `/health`, `/version` and `/metrics`
+  remain open
 
 Configuration file: `/etc/go-dhcpd/config.json5` on server VM
 

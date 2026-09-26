@@ -96,14 +96,14 @@ test_server_api() {
     fi
     
     # Test /metrics
-    if curl -s -f "${SERVER_API_URL}/metrics" > /dev/null 2>&1; then
+    if auth_curl "${SERVER_API_URL}/metrics" > /dev/null 2>&1; then
         test_result 0 "Server /metrics endpoint responds"
     else
         test_result 1 "Server /metrics endpoint failed"
     fi
     
     # Test /version
-    if curl -s -f "${SERVER_API_URL}/version" | grep -q "version"; then
+    if auth_curl "${SERVER_API_URL}/version" | grep -q "version"; then
         test_result 0 "Server /version endpoint returns valid data"
     else
         test_result 1 "Server /version endpoint failed"

@@ -49,7 +49,7 @@ install: build
 
 uninstall:
 	rm -f $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
-	rm -rf $(PLUGIN_DIR)
+	rm -rf $(PLUGIN_DIR)/file-config.plugin
 	@echo "Uninstall complete. Config and data directories preserved."
 
 

@@ -59,6 +59,27 @@ func (a *Allocator) Refresh() error {
 	return nil
 }
 
+// Subnets returns a snapshot of the subnets currently cached from the
+// config-provider plugin, for consumers (e.g. the DHCP server) that need to
+// read the same provider-backed data the allocator uses.
+func (a *Allocator) Subnets() []config.SubnetConfig {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	subnets := make([]config.SubnetConfig, len(a.subnets))
+	copy(subnets, a.subnets)
+	return subnets
+}
+
+// StaticHosts returns a snapshot of the static hosts currently cached from
+// the config-provider plugin.
+func (a *Allocator) StaticHosts() []config.StaticHost {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	hosts := make([]config.StaticHost, len(a.static))
+	copy(hosts, a.static)
+	return hosts
+}
+
 // AllocateIP allocates an IP address for a MAC address
 func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, error) {
 	// Check if there's a static assignment

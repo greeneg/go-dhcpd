@@ -551,7 +551,7 @@ func (s *Server) sendPacket(packet *Packet) error {
 
 // findSubnetForIP finds the subnet configuration for an IP
 func (s *Server) findSubnetForIP(ip net.IP) *config.SubnetConfig {
-	for _, subnet := range s.config.Subnets {
+	for _, subnet := range s.allocator.Subnets() {
 		// Parse network address
 		networkIP := net.ParseIP(subnet.Network)
 		if networkIP == nil {
@@ -632,7 +632,7 @@ func (s *Server) Close() error {
 // isStaticLease checks if a MAC address has a static assignment
 func (s *Server) isStaticLease(macAddr string) bool {
 	macAddr = toLowerMAC(macAddr)
-	for _, static := range s.config.Static {
+	for _, static := range s.allocator.StaticHosts() {
 		if toLowerMAC(static.MACAddress) == macAddr {
 			return true
 		}

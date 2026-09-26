@@ -17,6 +17,29 @@
     "api_port": 18467
   },
 
+  // Plugin configuration
+  //
+  // go-dhcpd loads subnets and static leases through an external
+  // "config_provider" plugin, invoked as an independent binary. The
+  // bundled "file" plugin reads subnets/static hosts from this same
+  // config.json5 file and is read-only: it does not support write
+  // operations via the API. Future plugins (e.g. database-backed) can
+  // support write access.
+  "plugins": {
+    "config_provider": {
+      "name": "file",
+      // "path" is optional; when omitted it defaults to
+      // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin",
+      // using the prefix the dhcpd binary was built/installed with
+      // (see Makefile's INSTALL_PREFIX). Set it explicitly to override.
+      "settings": {
+        // Defaults to the config file passed on the command line if omitted
+        // only set this if you want to override the default config file path
+        // "config_path": "/etc/go-dhcpd/config.json5"
+      }
+    }
+  },
+
   // Subnet definitions
   "subnets": [
     {

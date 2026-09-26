@@ -16,7 +16,8 @@ cd /Users/greeneg/Development/go-dhcpd
 make build
 ```
 
-This will create the `dhcpd` binary in the `build/` directory.
+This will create the `dhcpd` binary in the `build/` directory, along with
+the bundled `file-config.plugin` config-provider plugin in `build/plugins/`.
 
 ### 2. Install System-Wide
 
@@ -24,8 +25,14 @@ This will create the `dhcpd` binary in the `build/` directory.
 sudo make install
 ```
 
+By default this installs under `/usr/local` (`INSTALL_PREFIX`). To install
+elsewhere, pass `INSTALL_PREFIX` to both `build` and `install` so the
+binary is compiled knowing where its plugin directory will live, e.g.
+`sudo make build install INSTALL_PREFIX=/opt/go-dhcpd`.
+
 This will:
-- Install the binary to `/usr/local/bin/dhcpd`
+- Install the binary to `$(INSTALL_PREFIX)/bin/dhcpd`
+- Install the `file` config-provider plugin to `$(INSTALL_PREFIX)/lib/go-dhcpd/plugins/file-config.plugin`
 - Create configuration directory at `/etc/go-dhcpd/`
 - Create data directory at `/var/lib/go-dhcpd/`
 - Copy example configuration
@@ -40,7 +47,8 @@ sudo vim /etc/go-dhcpd/config.json5
 ```
 
 At minimum, configure:
-- `subnets` - Define your network ranges
+- `plugins.config_provider` - Points at the config-provider plugin binary (defaults to the installed `file` plugin)
+- `subnets` - Define your network ranges (read by the `file` plugin)
 - `dynamic_ranges` - DHCP pool using CIDR notation
 - `domain_name_servers` - DNS servers for clients
 - `routers` - Default gateway for clients

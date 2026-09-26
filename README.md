@@ -14,6 +14,12 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
   - Subnet definitions with flexible IP range specifications
   - Per-subnet DHCP options (DNS, routers, NTP, NetBIOS, etc.)
   - Enable/disable BootP per subnet
+
+- **Plugin Architecture**
+  - Subnets and static leases are supplied by an external, independently
+    executed config-provider plugin
+  - Bundled `file` plugin reads them from `config.json5` (read-only)
+  - Future plugins can add write support (e.g. database-backed storage)
   
 - **Address Management**
   - SQLite3 database for lease tracking
@@ -102,6 +108,40 @@ Create a configuration file at `/etc/go-dhcpd/config.json5`:
 ```
 
 See `config.example.json5` for a complete configuration example.
+
+## Plugin Architecture
+
+Subnets and static host leases are not parsed directly by the daemon.
+Instead, they are supplied by a "config-provider" plugin: an independent
+executable configured under `plugins.config_provider` in `config.json5`:
+
+```json5
+"plugins": {
+  "config_provider": {
+    "name": "file",
+    // "path" is optional; defaults to
+    // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin", where
+    // install_prefix is whatever INSTALL_PREFIX `make install` used
+    // (baked into the binary at build time, default /usr/local)
+    "settings": {
+      "config_path": "/etc/go-dhcpd/config.json5"
+    }
+  }
+}
+```
+
+At startup, the daemon executes the configured plugin binary once per
+request, sending a JSON request on the plugin's stdin and reading a JSON
+response from its stdout (see `internal/pluginapi` for the protocol). This
+keeps plugins fully decoupled from the daemon process.
+
+The bundled `file` plugin (`cmd/plugins/file-config`) reproduces today's
+behavior: it reads the `subnets` and `static` arrays from `config.json5`
+(or another file specified via the `config_path` setting). It is
+intentionally **read-only** — the `/subnets` and `/static` write endpoints
+in the API return `403 Forbidden` when it is the active plugin. Future
+plugins (e.g. a database-backed provider) can advertise write support via
+the plugin's `capabilities` response and allow full CRUD through the API.
 
 ### Network Interface Binding
 

@@ -3,15 +3,39 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"github.com/yosuke-furukawa/json5/encoding/json5"
 )
 
+// DefaultPluginDir is the directory searched for the built-in config-provider
+// plugin when plugins.config_provider.path is not set in config.json5. It is
+// set at build time via -ldflags (see Makefile's INSTALL_PREFIX) so it always
+// matches the prefix the binary was actually installed under; the literal
+// below is only a fallback for builds that don't pass -ldflags (e.g. `go run`).
+var DefaultPluginDir = "/usr/local/lib/go-dhcpd/plugins"
+
 // Config represents the complete DHCP server configuration
 type Config struct {
 	Global  GlobalConfig   `json:"global"`
+	Plugins PluginsConfig  `json:"plugins"`
 	Subnets []SubnetConfig `json:"subnets"`
 	Static  []StaticHost   `json:"static"`
+}
+
+// PluginConfig describes a single external plugin binary and the settings
+// passed to it on every invocation.
+type PluginConfig struct {
+	Name     string         `json:"name"`
+	Path     string         `json:"path"`
+	Settings map[string]any `json:"settings"`
+}
+
+// PluginsConfig lists the plugins the daemon loads at startup.
+type PluginsConfig struct {
+	// ConfigProvider is the plugin responsible for supplying (and, if it
+	// supports write operations, managing) subnets and static leases.
+	ConfigProvider PluginConfig `json:"config_provider"`
 }
 
 // GlobalConfig represents global DHCP settings
@@ -92,6 +116,23 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if config.Global.APIPort == 0 {
 		config.Global.APIPort = 18467
+	}
+
+	if config.Plugins.ConfigProvider.Name == "" {
+		config.Plugins.ConfigProvider.Name = "file"
+	}
+	if config.Plugins.ConfigProvider.Path == "" {
+		config.Plugins.ConfigProvider.Path = filepath.Join(DefaultPluginDir, "file-config.plugin")
+	}
+	if config.Plugins.ConfigProvider.Settings == nil {
+		config.Plugins.ConfigProvider.Settings = map[string]any{}
+	}
+	if _, ok := config.Plugins.ConfigProvider.Settings["config_path"]; !ok {
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			absPath = path
+		}
+		config.Plugins.ConfigProvider.Settings["config_path"] = absPath
 	}
 
 	return &config, nil

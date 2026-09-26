@@ -2,6 +2,10 @@
 
 The go-dhcpd daemon exposes a REST API on port 18467 (configurable) for monitoring and management.
 
+## Plugin Architecture
+
+Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only.
+
 ## Base URL
 
 ```
@@ -122,7 +126,7 @@ Get database statistics.
 
 #### GET /config
 
-Get the current server configuration.
+Get the current server configuration. `subnets` and `static` are fetched live from the configured config-provider plugin (see [Plugin Architecture](#plugin-architecture)).
 
 **Response:**
 ```json
@@ -136,12 +140,108 @@ Get the current server configuration.
     "listen_address": "0.0.0.0",
     "api_port": 18467
   },
+  "plugins": {
+    "config_provider": { "name": "file", "path": "...", "settings": {...} }
+  },
   "subnets": [...],
   "static": [...]
 }
 ```
 
-**Note:** Configuration is read-only via the API. To modify configuration, edit the config file and restart the daemon.
+**Note:** The `global` and `plugins` settings are read-only via the API; edit the config file and restart the daemon to change them. Whether `subnets`/`static` are writable via the API depends on the loaded config-provider plugin (see below).
+
+---
+
+### Subnets
+
+#### GET /subnets
+
+Get the current list of subnets, as reported by the config-provider plugin.
+
+**Response:**
+```json
+{
+  "count": 1,
+  "subnets": [...]
+}
+```
+
+---
+
+#### POST /subnets
+
+Add a new subnet. Requires a config-provider plugin that supports write operations.
+
+**Request body:** a subnet object (see `config.example.json5`).
+
+**Status Codes:**
+- `201 Created` - Subnet added
+- `400 Bad Request` - Invalid request body
+- `403 Forbidden` - The loaded plugin is read-only
+- `500 Internal Server Error` - Plugin execution failed
+
+---
+
+#### PUT /subnets/:network
+
+Replace an existing subnet identified by its network address. Requires a writable plugin.
+
+---
+
+#### DELETE /subnets/:network
+
+Remove a subnet identified by its network address. Requires a writable plugin.
+
+---
+
+### Static Hosts
+
+#### GET /static
+
+Get the current list of static host assignments, as reported by the config-provider plugin.
+
+**Response:**
+```json
+{
+  "count": 2,
+  "static": [...]
+}
+```
+
+---
+
+#### POST /static
+
+Add a new static host. Requires a config-provider plugin that supports write operations.
+
+**Request body:**
+```json
+{
+  "mac_address": "aa:bb:cc:dd:ee:ff",
+  "ip_address": "192.168.1.10",
+  "hostname": "server1.example.local"
+}
+```
+
+**Status Codes:**
+- `201 Created` - Static host added
+- `400 Bad Request` - Invalid request body
+- `403 Forbidden` - The loaded plugin is read-only
+- `500 Internal Server Error` - Plugin execution failed
+
+---
+
+#### PUT /static/:mac
+
+Replace an existing static host identified by MAC address. Requires a writable plugin.
+
+---
+
+#### DELETE /static/:mac
+
+Remove a static host identified by MAC address. Requires a writable plugin.
+
+**Note:** The bundled `file` plugin (which reads subnets/static hosts from `config.json5`) is read-only; all of the write endpoints above return `403 Forbidden` when it is the active config-provider.
 
 ---
 

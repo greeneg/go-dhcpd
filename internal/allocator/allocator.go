@@ -5,25 +5,79 @@ import (
 	"net"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/greeneg/go-dhcpd/internal/config"
 	"github.com/greeneg/go-dhcpd/internal/db"
 	"github.com/greeneg/go-dhcpd/internal/logger"
+	"github.com/greeneg/go-dhcpd/internal/plugin"
 )
 
 // Allocator handles IP address allocation
 type Allocator struct {
-	config *config.Config
-	db     *db.Database
+	config  *config.Config
+	db      *db.Database
+	plugins *plugin.Manager
+
+	mu      sync.RWMutex
+	subnets []config.SubnetConfig
+	static  []config.StaticHost
 }
 
-// NewAllocator creates a new IP allocator
-func NewAllocator(cfg *config.Config, database *db.Database) *Allocator {
-	return &Allocator{
-		config: cfg,
-		db:     database,
+// NewAllocator creates a new IP allocator, loading subnets and static hosts
+// from the config-provider plugin.
+func NewAllocator(cfg *config.Config, database *db.Database, plugins *plugin.Manager) (*Allocator, error) {
+	a := &Allocator{
+		config:  cfg,
+		db:      database,
+		plugins: plugins,
 	}
+	if err := a.Refresh(); err != nil {
+		return nil, fmt.Errorf("failed to load subnets/static hosts from plugin: %w", err)
+	}
+	return a, nil
+}
+
+// Refresh re-fetches subnets and static hosts from the config-provider
+// plugin. Callers should invoke this after a successful write through the
+// plugin so in-memory allocation decisions reflect the latest data.
+func (a *Allocator) Refresh() error {
+	subnets, err := a.plugins.GetSubnets()
+	if err != nil {
+		return err
+	}
+	staticHosts, err := a.plugins.GetStaticHosts()
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	a.subnets = subnets
+	a.static = staticHosts
+	a.mu.Unlock()
+	return nil
+}
+
+// Subnets returns a snapshot of the subnets currently cached from the
+// config-provider plugin, for consumers (e.g. the DHCP server) that need to
+// read the same provider-backed data the allocator uses.
+func (a *Allocator) Subnets() []config.SubnetConfig {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	subnets := make([]config.SubnetConfig, len(a.subnets))
+	copy(subnets, a.subnets)
+	return subnets
+}
+
+// StaticHosts returns a snapshot of the static hosts currently cached from
+// the config-provider plugin.
+func (a *Allocator) StaticHosts() []config.StaticHost {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	hosts := make([]config.StaticHost, len(a.static))
+	copy(hosts, a.static)
+	return hosts
 }
 
 // AllocateIP allocates an IP address for a MAC address
@@ -55,7 +109,10 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 	}
 
 	// Find an available IP from dynamic ranges
-	for _, subnet := range a.config.Subnets {
+	a.mu.RLock()
+	subnets := a.subnets
+	a.mu.RUnlock()
+	for _, subnet := range subnets {
 		for _, dynamicRange := range subnet.DynamicRanges {
 			ip, err := a.findAvailableIPInRange(dynamicRange.StartAddress, dynamicRange.EndAddress, macAddr)
 			if err != nil {
@@ -73,7 +130,10 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 // getStaticIP checks if there's a static assignment for the MAC address
 func (a *Allocator) getStaticIP(macAddr string) net.IP {
 	macAddr = strings.ToLower(macAddr)
-	for _, static := range a.config.Static {
+	a.mu.RLock()
+	staticHosts := a.static
+	a.mu.RUnlock()
+	for _, static := range staticHosts {
 		if strings.ToLower(static.MACAddress) == macAddr {
 			// Try to parse as IP first
 			ip := net.ParseIP(static.IPAddress)
@@ -276,6 +336,74 @@ func (a *Allocator) ReleaseLease(macAddr string) error {
 	lease.State = "expired"
 	lease.LeaseEnd = time.Now()
 	return a.db.UpdateLease(lease)
+}
+
+// SeedStaticLease creates or refreshes a long-lived (effectively permanent)
+// database lease for a static host, mirroring the daemon's startup seeding
+// so config-provider writes (add/update) stay consistent with what a
+// restart would produce.
+func (a *Allocator) SeedStaticLease(host config.StaticHost) error {
+	ip, err := resolveStaticAddress(host.IPAddress)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	lease := &db.Lease{
+		MACAddress: host.MACAddress,
+		IPAddress:  ip,
+		Hostname:   host.Hostname,
+		LeaseStart: now,
+		LeaseEnd:   now.AddDate(100, 0, 0), // effectively permanent
+		State:      "active",
+		IsStatic:   true,
+	}
+
+	existingLease, err := a.db.GetLeaseByIP(ip)
+	if err != nil {
+		return err
+	}
+	if existingLease != nil {
+		lease.ID = existingLease.ID
+		return a.db.UpdateLease(lease)
+	}
+	return a.db.AddLease(lease)
+}
+
+// RevokeStaticLease expires any active database lease held by macAddr. It is
+// a no-op, not an error, when no active lease exists for that MAC, so
+// callers can use it unconditionally when a static host is deleted or
+// changes IP address to avoid leaving a stale, permanently-active row behind.
+func (a *Allocator) RevokeStaticLease(macAddr string) error {
+	lease, err := a.db.GetLeaseByMAC(macAddr)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return nil
+	}
+	lease.State = "expired"
+	lease.LeaseEnd = time.Now()
+	return a.db.UpdateLease(lease)
+}
+
+// resolveStaticAddress resolves a static host's configured address, which
+// may be a literal IP or a hostname to look up, to a dotted IPv4 string.
+func resolveStaticAddress(addr string) (string, error) {
+	if ip := net.ParseIP(addr); ip != nil {
+		return ip.String(), nil
+	}
+
+	ips, err := net.LookupIP(addr)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve hostname %q: %w", addr, err)
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no IPv4 address found for %q", addr)
 }
 
 // Helper functions

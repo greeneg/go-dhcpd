@@ -8,6 +8,9 @@ CONFIG_DIR=/etc/go-dhcpd
 DATA_DIR=/var/lib/go-dhcpd
 PLUGIN_DIR=$(INSTALL_PREFIX)/lib/go-dhcpd/plugins
 LDFLAGS=-X 'github.com/greeneg/go-dhcpd/internal/config.DefaultPluginDir=$(PLUGIN_DIR)'
+# Used by run/run-dev so a local test build finds plugins under build/plugins
+# instead of the install-prefix path baked in by LDFLAGS.
+DEV_LDFLAGS=-X 'github.com/greeneg/go-dhcpd/internal/config.DefaultPluginDir=$(abspath $(PLUGIN_BUILD_DIR))'
 
 help:
 	@echo "Available targets:"
@@ -53,13 +56,16 @@ uninstall:
 test:
 	go test -v ./...
 
-run: build
+run: deps
+	@mkdir -p $(BUILD_DIR) $(PLUGIN_BUILD_DIR)
+	go build -ldflags "$(DEV_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dhcpd
+	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
 	sudo $(BUILD_DIR)/$(BINARY_NAME) -config config.example.json5 -stdout
 
 run-dev: deps
 	@mkdir -p $(PLUGIN_BUILD_DIR)
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
-	go run -ldflags "$(LDFLAGS)" ./cmd/dhcpd -config config.example.json5 -stdout
+	go run -ldflags "$(DEV_LDFLAGS)" ./cmd/dhcpd -config config.example.json5 -stdout
 
 fmt:
 	go fmt ./...

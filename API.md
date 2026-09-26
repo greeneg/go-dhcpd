@@ -2,6 +2,22 @@
 
 The go-dhcpd daemon exposes a REST API on port 18467 (configurable) for monitoring and management.
 
+## Authentication
+
+`/health`, `/version` and the `/metrics` hierarchy are unauthenticated. Every
+other endpoint requires HTTP Basic Auth, verified against the host's local
+users via PAM (service `go-dhcpd`, installed to `/etc/pam.d/go-dhcpd` by
+`make install`). `root` is always authorized; other users/groups must be
+listed under `auth.allowed_users` / `auth.allowed_groups` in `config.json5`.
+
+```bash
+curl -u admin:password http://localhost:18467/leases
+```
+
+**Status Codes:**
+- `401 Unauthorized` - Missing or invalid credentials
+- `403 Forbidden` - Credentials valid but the user isn't authorized
+
 ## Plugin Architecture
 
 Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only.
@@ -412,6 +428,8 @@ watch -n 5 'curl -s http://localhost:18467/metrics/dhcp | jq'
 All endpoints return standard HTTP status codes:
 
 - `200 OK` - Request successful
+- `401 Unauthorized` - Missing or invalid Basic Auth credentials (authenticated endpoints only)
+- `403 Forbidden` - Valid credentials, but the user is not authorized, or the config-provider plugin is read-only
 - `404 Not Found` - Resource not found
 - `500 Internal Server Error` - Server error
 
@@ -421,10 +439,9 @@ All responses are in JSON format with `Content-Type: application/json`.
 
 ## Authentication
 
-Currently, the API does not require authentication. It is recommended to:
-- Bind the API to localhost only (or use firewall rules)
-- Use a reverse proxy with authentication if exposing externally
-- Consider implementing authentication in future versions
+See [Authentication](#authentication-1) above: `/health`, `/version` and `/metrics*` are open, everything else requires HTTP Basic Auth checked against local PAM. For additional hardening, also consider:
+- Binding the API to localhost only (or use firewall rules)
+- Using a reverse proxy for TLS termination if exposing externally
 
 ## Rate Limiting
 

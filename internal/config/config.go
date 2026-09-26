@@ -18,9 +18,19 @@ var DefaultPluginDir = "/usr/local/lib/go-dhcpd/plugins"
 // Config represents the complete DHCP server configuration
 type Config struct {
 	Global  GlobalConfig   `json:"global"`
+	Auth    AuthConfig     `json:"auth"`
 	Plugins PluginsConfig  `json:"plugins"`
 	Subnets []SubnetConfig `json:"subnets"`
 	Static  []StaticHost   `json:"static"`
+}
+
+// AuthConfig controls who may access authenticated API endpoints. Requests
+// are authenticated via HTTP Basic Auth against the host's local PAM stack;
+// this only controls authorization (who is allowed through) once a request's
+// credentials have been verified. root is always authorized.
+type AuthConfig struct {
+	AllowedUsers  []string `json:"allowed_users"`
+	AllowedGroups []string `json:"allowed_groups"`
 }
 
 // PluginConfig describes a single external plugin binary and the settings

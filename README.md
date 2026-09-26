@@ -33,6 +33,7 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
   - Real-time performance metrics
   - Lease information retrieval
   - Configuration viewing
+  - HTTP Basic Auth (via local PAM) protecting all mutating/config endpoints
   
 - **Logging**
   - Standard syslog integration
@@ -46,6 +47,8 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
 - Go 1.21 or later
 - Linux system with syslog support
 - Root/sudo access (for binding to port 67 and raw socket binding for broadcast traffic)
+- A C compiler and PAM development headers (`pam-devel` on RHEL/Fedora/openSUSE,
+  `libpam0g-dev` on Debian/Ubuntu) since the API's authentication uses cgo
 
 ### Build from Source
 
@@ -62,6 +65,26 @@ sudo make install
 ```
 
 The binary will be installed to `/usr/local/bin/dhcpd`.
+
+## API Authentication
+
+`/health`, `/version` and the `/metrics` endpoints are always unauthenticated.
+Every other endpoint (`/config`, `/subnets`, `/static`, `/leases`, `/deny`)
+requires HTTP Basic Auth. Credentials are verified against the host's local
+users via PAM, using the `go-dhcpd` PAM service installed to
+`/etc/pam.d/go-dhcpd` by `make install` (see `pam.d/` in the repo).
+
+`root` is always authorized. Other accounts must be explicitly allowed via
+`auth.allowed_users` and/or `auth.allowed_groups` in `config.json5`:
+
+```json5
+"auth": {
+  "allowed_users": ["admin"],
+  "allowed_groups": ["go-dhcpd-admins"]
+}
+```
+
+If both lists are empty, only `root` can reach the authenticated endpoints.
 
 ## Configuration
 

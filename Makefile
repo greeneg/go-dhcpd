@@ -16,11 +16,15 @@ help:
 	@echo "Available targets:"
 	@echo "  build       - Build the dhcpd binary and bundled plugins"
 	@echo "  clean       - Remove build artifacts"
-	@echo "  install     - Install dhcpd, plugins and configuration (requires root)"
+	@echo "  install     - Install dhcpd, plugins, configuration and PAM service (requires root)"
 	@echo "  uninstall   - Uninstall dhcpd (requires root)"
 	@echo "  test        - Run tests"
 	@echo "  run         - Build and run dhcpd with example config"
 	@echo "  deps        - Download dependencies"
+	@echo ""
+	@echo "Note: building requires a C compiler and PAM development headers"
+	@echo "      (pam-devel on RHEL/Fedora, libpam0g-dev on Debian/Ubuntu,"
+	@echo "      pam-devel on openSUSE) since the API's basic auth uses cgo."
 
 deps:
 	go mod download
@@ -43,6 +47,16 @@ install: build
 	install -D -m 0755 -d $(DATA_DIR)
 	install -D -m 0755 -d $(PLUGIN_DIR)
 	install -D -m 0755 $(PLUGIN_BUILD_DIR)/file-config.plugin $(PLUGIN_DIR)/file-config.plugin
+	@if [ -f /etc/pam.d/go-dhcpd ]; then \
+		echo "/etc/pam.d/go-dhcpd already exists, leaving it untouched"; \
+	elif [ -f /etc/pam.d/system-auth ]; then \
+		install -D -m 0644 pam.d/go-dhcpd.system-auth /etc/pam.d/go-dhcpd; \
+	elif [ -f /etc/pam.d/common-auth ]; then \
+		install -D -m 0644 pam.d/go-dhcpd.common-auth /etc/pam.d/go-dhcpd; \
+	else \
+		echo "Warning: could not detect a system-auth/common-auth PAM stack;"; \
+		echo "         install pam.d/go-dhcpd.* manually as /etc/pam.d/go-dhcpd"; \
+	fi
 	@echo "Installation complete!"
 	@echo "1. Edit $(CONFIG_DIR)/config.json5"
 	@echo "2. Run: sudo $(INSTALL_PREFIX)/bin/$(BINARY_NAME) -config $(CONFIG_DIR)/config.json5"
@@ -50,6 +64,7 @@ install: build
 uninstall:
 	rm -f $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
 	rm -rf $(PLUGIN_DIR)/file-config.plugin
+	rm -f /etc/pam.d/go-dhcpd
 	@echo "Uninstall complete. Config and data directories preserved."
 
 

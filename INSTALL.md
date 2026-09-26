@@ -2,8 +2,10 @@
 
 ## Prerequisites
 
-- Linux system (tested on RHEL/CentOS/Fedora, Ubuntu/Debian)
+- Linux system (tested on RHEL/CentOS/Fedora, Ubuntu/Debian, openSUSE)
 - Go 1.21 or later (for building from source)
+- A C compiler and PAM development headers (`pam-devel` on RHEL/Fedora/openSUSE,
+  `libpam0g-dev` on Debian/Ubuntu) - the API's Basic Auth uses PAM via cgo
 - Root/sudo access
 - Network interface to serve DHCP requests
 
@@ -33,6 +35,9 @@ binary is compiled knowing where its plugin directory will live, e.g.
 This will:
 - Install the binary to `$(INSTALL_PREFIX)/bin/dhcpd`
 - Install the `file` config-provider plugin to `$(INSTALL_PREFIX)/lib/go-dhcpd/plugins/file-config.plugin`
+- Install the `go-dhcpd` PAM service to `/etc/pam.d/go-dhcpd` (auto-detecting
+  a `system-auth` or `common-auth` style stack; see `pam.d/` if neither is
+  found and it needs installing manually)
 - Create configuration directory at `/etc/go-dhcpd/`
 - Create data directory at `/var/lib/go-dhcpd/`
 - Copy example configuration
@@ -47,6 +52,7 @@ sudo vim /etc/go-dhcpd/config.json5
 ```
 
 At minimum, configure:
+- `auth.allowed_users` / `auth.allowed_groups` - Non-root accounts allowed to reach authenticated API endpoints (root is always allowed)
 - `plugins.config_provider` - Points at the config-provider plugin binary (defaults to the installed `file` plugin)
 - `subnets` - Define your network ranges (read by the `file` plugin)
 - `dynamic_ranges` - DHCP pool using CIDR notation

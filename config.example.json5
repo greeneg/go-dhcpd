@@ -17,6 +17,18 @@
     "api_port": 18467
   },
 
+  // API authorization
+  //
+  // /health, /version and the /metrics endpoints are always unauthenticated.
+  // Every other endpoint (config, subnets, static hosts, leases, deny list)
+  // requires HTTP Basic Auth, checked against the host's local users via
+  // PAM (service name "go-dhcpd"; see pam.d/ in the repo). root is always
+  // authorized; allowed_users/allowed_groups grant additional accounts.
+  "auth": {
+    "allowed_users": ["admin"],
+    "allowed_groups": ["go-dhcpd-admins"]
+  },
+
   // Plugin configuration
   //
   // go-dhcpd loads subnets and static leases through an external

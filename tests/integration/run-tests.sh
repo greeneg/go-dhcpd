@@ -10,7 +10,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_API_URL="${SERVER_API_URL:-http://192.168.100.10:18467}"
 SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
-SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-dhcpd-test-password}"
+SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
+
+if [ -z "$SERVER_API_PASSWORD" ]; then
+    echo "Set SERVER_API_PASSWORD before running integration tests" >&2
+    exit 1
+fi
 
 # Colors
 RED='\033[0;31m'

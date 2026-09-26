@@ -14,7 +14,18 @@
     "listen_interface": "",            // Network interface to bind to (e.g., "eth0", "ens33")
                                        // Leave empty to listen on all interfaces
                                        // Restricts both raw socket and UDP listeners
-    "api_port": 18467
+    "api_port": 18467,
+
+    // Serve the API over HTTPS instead of plain HTTP. Strongly recommended
+    // whenever authenticated endpoints are reachable over an untrusted
+    // network, since HTTP Basic Auth credentials are otherwise sent in
+    // the clear. cert_file/key_file must be PEM-encoded and readable by
+    // the daemon.
+    "tls": {
+      "enabled": false,
+      "cert_file": "/etc/go-dhcpd/tls/cert.pem",
+      "key_file": "/etc/go-dhcpd/tls/key.pem"
+    }
   },
 
   // API authorization
@@ -44,11 +55,10 @@
       // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin",
       // using the prefix the dhcpd binary was built/installed with
       // (see Makefile's INSTALL_PREFIX). Set it explicitly to override.
-      "settings": {
-        // Defaults to the config file passed on the command line if omitted
-        // only set this if you want to override the default config file path
-        // "config_path": "/etc/go-dhcpd/config.json5"
-      }
+      //
+      // "settings" defaults config_path to the config file passed on the
+      // command line; only set config_path here to override that default.
+      "settings": {}
     }
   },
 

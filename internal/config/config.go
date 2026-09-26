@@ -50,14 +50,24 @@ type PluginsConfig struct {
 
 // GlobalConfig represents global DHCP settings
 type GlobalConfig struct {
-	LeaseTime       int    `json:"lease_time"`        // in seconds
-	NetBIOSNodeType int    `json:"netbios_node_type"` // 1=B-node, 2=P-node, 4=M-node, 8=H-node
-	PingTimeout     int    `json:"ping_timeout"`      // in milliseconds
-	PingRetries     int    `json:"ping_retries"`
-	DatabasePath    string `json:"database_path"`
-	ListenAddress   string `json:"listen_address"`   // IP address to bind to (deprecated, use ListenInterface)
-	ListenInterface string `json:"listen_interface"` // Network interface to bind to (e.g., eth0, ens33)
-	APIPort         int    `json:"api_port"`         // default 18467
+	LeaseTime       int       `json:"lease_time"`        // in seconds
+	NetBIOSNodeType int       `json:"netbios_node_type"` // 1=B-node, 2=P-node, 4=M-node, 8=H-node
+	PingTimeout     int       `json:"ping_timeout"`      // in milliseconds
+	PingRetries     int       `json:"ping_retries"`
+	DatabasePath    string    `json:"database_path"`
+	ListenAddress   string    `json:"listen_address"`   // IP address to bind to (deprecated, use ListenInterface)
+	ListenInterface string    `json:"listen_interface"` // Network interface to bind to (e.g., eth0, ens33)
+	APIPort         int       `json:"api_port"`         // default 18467
+	TLS             TLSConfig `json:"tls"`              // serve the API over HTTPS instead of plain HTTP
+}
+
+// TLSConfig controls whether the API server is served over HTTPS. When
+// Enabled, both CertFile and KeyFile must point to a valid PEM certificate
+// (chain) and private key readable by the daemon.
+type TLSConfig struct {
+	Enabled  bool   `json:"enabled"`
+	CertFile string `json:"cert_file"`
+	KeyFile  string `json:"key_file"`
 }
 
 // DynamicRange represents a dynamic IP allocation range

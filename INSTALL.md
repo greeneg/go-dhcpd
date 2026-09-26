@@ -52,12 +52,39 @@ sudo vim /etc/go-dhcpd/config.json5
 ```
 
 At minimum, configure:
+- `global.tls` - **Strongly recommended:** enable HTTPS for the API so Basic Auth credentials aren't sent in the clear (see below)
 - `auth.allowed_users` / `auth.allowed_groups` - Non-root accounts allowed to reach authenticated API endpoints (root is always allowed)
 - `plugins.config_provider` - Points at the config-provider plugin binary (defaults to the installed `file` plugin)
 - `subnets` - Define your network ranges (read by the `file` plugin)
 - `dynamic_ranges` - DHCP pool using CIDR notation
 - `domain_name_servers` - DNS servers for clients
 - `routers` - Default gateway for clients
+
+#### Enable TLS for the API
+
+Generate or install a certificate/key pair (a self-signed pair is fine for
+internal use; use a CA-issued one where possible), e.g.:
+
+```bash
+sudo mkdir -p /etc/go-dhcpd/tls
+sudo openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+  -keyout /etc/go-dhcpd/tls/key.pem -out /etc/go-dhcpd/tls/cert.pem \
+  -subj "/CN=$(hostname -f)"
+sudo chmod 600 /etc/go-dhcpd/tls/key.pem
+```
+
+Then set in `config.json5`:
+
+```json5
+"global": {
+  ...
+  "tls": {
+    "enabled": true,
+    "cert_file": "/etc/go-dhcpd/tls/cert.pem",
+    "key_file": "/etc/go-dhcpd/tls/key.pem"
+  }
+}
+```
 
 ### 4. Create Database Directory
 
@@ -86,8 +113,8 @@ sudo systemctl status go-dhcpd
 Check the API:
 
 ```bash
-curl http://localhost:18467/health
-curl http://localhost:18467/metrics
+curl https://localhost:18467/health
+curl https://localhost:18467/metrics
 ```
 
 View logs:
@@ -154,7 +181,7 @@ sudo dhcping -s 192.168.1.1
 
 3. Check the API for leases:
 ```bash
-curl http://localhost:18467/leases
+curl https://localhost:18467/leases
 ```
 
 ## Troubleshooting

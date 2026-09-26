@@ -1,8 +1,10 @@
 package api
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -122,11 +124,34 @@ func (a *API) authMiddleware() gin.HandlerFunc {
 	}
 }
 
-// Start starts the API server
+// Start starts the API server, serving over HTTPS when global.tls.enabled
+// is set, otherwise plain HTTP.
 func (a *API) Start() error {
 	addr := fmt.Sprintf(":%d", a.config.Global.APIPort)
-	logger.Info(fmt.Sprintf("API server listening on %s", addr))
-	return a.engine.Run(addr)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: a.engine,
+	}
+
+	tlsCfg := a.config.Global.TLS
+	if tlsCfg.Enabled {
+		if tlsCfg.CertFile == "" || tlsCfg.KeyFile == "" {
+			return fmt.Errorf("global.tls.enabled is true but cert_file and/or key_file is not set")
+		}
+		if _, err := os.Stat(tlsCfg.CertFile); err != nil {
+			return fmt.Errorf("TLS certificate file %q is not accessible: %w", tlsCfg.CertFile, err)
+		}
+		if _, err := os.Stat(tlsCfg.KeyFile); err != nil {
+			return fmt.Errorf("TLS key file %q is not accessible: %w", tlsCfg.KeyFile, err)
+		}
+
+		server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		logger.Info(fmt.Sprintf("API server listening on %s (HTTPS)", addr))
+		return server.ListenAndServeTLS(tlsCfg.CertFile, tlsCfg.KeyFile)
+	}
+
+	logger.Info(fmt.Sprintf("API server listening on %s (HTTP, unencrypted)", addr))
+	return server.ListenAndServe()
 }
 
 // Health check handler

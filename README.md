@@ -34,6 +34,7 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
   - Lease information retrieval
   - Configuration viewing
   - HTTP Basic Auth (via local PAM) protecting all mutating/config endpoints
+  - Optional TLS (HTTPS) transport for the API
   
 - **Logging**
   - Standard syslog integration
@@ -86,6 +87,24 @@ users via PAM, using the `go-dhcpd` PAM service installed to
 
 If both lists are empty, only `root` can reach the authenticated endpoints.
 
+## API Transport Security (TLS)
+
+Basic Auth credentials are sent in the clear over plain HTTP, so **enabling
+TLS is strongly recommended** whenever the API is reachable over anything
+but a fully trusted loopback/local link. Set `global.tls` in `config.json5`:
+
+```json5
+"tls": {
+  "enabled": true,
+  "cert_file": "/etc/go-dhcpd/tls/cert.pem",
+  "key_file": "/etc/go-dhcpd/tls/key.pem"
+}
+```
+
+`cert_file`/`key_file` must be PEM-encoded and readable by the daemon (which
+already runs as root). The daemon enforces a minimum of TLS 1.2. When
+`enabled` is `false` (the default), the API serves plain HTTP instead.
+
 ## Configuration
 
 Create a configuration file at `/etc/go-dhcpd/config.json5`:
@@ -100,9 +119,27 @@ Create a configuration file at `/etc/go-dhcpd/config.json5`:
     "database_path": "/var/lib/go-dhcpd/dhcpd.db",
     "listen_address": "0.0.0.0",   // Deprecated: use listen_interface instead
     "listen_interface": "",        // Network interface (e.g., "eth0", "ens33"), leave empty for all
-    "api_port": 18467
+    "api_port": 18467,
+    "tls": {
+      "enabled": true,
+      "cert_file": "/etc/go-dhcpd/tls/cert.pem",
+      "key_file": "/etc/go-dhcpd/tls/key.pem"
+    }
   },
-  
+
+  "plugins": {
+    "config_provider": {
+      "name": "file",
+      // "path" is optional; defaults to
+      // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin", where
+      // install_prefix is whatever INSTALL_PREFIX `make install` used
+      // (baked into the binary at build time, default /usr/local)
+      "settings": {
+        "config_path": "/etc/go-dhcpd/config.json5"
+      }
+    }
+  },
+
   "subnets": [
     {
       "network": "192.168.1.0",
@@ -235,46 +272,46 @@ The daemon exposes a REST API for monitoring and management:
 
 ```bash
 # Health check
-curl http://localhost:18467/health
+curl https://localhost:18467/health
 
 # Overall metrics
-curl http://localhost:18467/metrics
+curl https://localhost:18467/metrics
 
 # DHCP-specific statistics
-curl http://localhost:18467/metrics/dhcp
+curl https://localhost:18467/metrics/dhcp
 
 # Database statistics
-curl http://localhost:18467/metrics/database
+curl https://localhost:18467/metrics/database
 
 # Version information
-curl http://localhost:18467/version
+curl https://localhost:18467/version
 ```
 
 ### Configuration
 
 ```bash
 # View current configuration
-curl http://localhost:18467/config
+curl https://localhost:18467/config
 ```
 
 ### Leases
 
 ```bash
 # Get all leases
-curl http://localhost:18467/leases
+curl https://localhost:18467/leases
 
 # Get active leases only
-curl http://localhost:18467/leases/active
+curl https://localhost:18467/leases/active
 
 # Get lease for specific MAC address
-curl http://localhost:18467/leases/aa:bb:cc:dd:ee:ff
+curl https://localhost:18467/leases/aa:bb:cc:dd:ee:ff
 ```
 
 ### Denied Addresses
 
 ```bash
 # Get all denied (martian) addresses
-curl http://localhost:18467/deny
+curl https://localhost:18467/deny
 ```
 
 ## Architecture

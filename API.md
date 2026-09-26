@@ -38,7 +38,7 @@ curl -u admin:password https://localhost:18467/leases
 
 ## Plugin Architecture
 
-Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only.
+Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only, while the bundled `sqlite3-config` plugin supports full subnet CRUD (static-lease writes are not yet implemented in `sqlite3-config`).
 
 ## Base URL
 

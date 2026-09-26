@@ -1,0 +1,7 @@
+#%PAM-1.0
+# PAM service used by go-dhcpd to authenticate API requests (HTTP Basic
+# Auth) against the host's local users. Install as /etc/pam.d/go-dhcpd.
+#
+# This variant is for RHEL/CentOS/Fedora-family systems (system-auth).
+auth       include      system-auth
+account    include      system-auth

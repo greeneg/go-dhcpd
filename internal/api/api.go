@@ -1,12 +1,15 @@
 package api
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/greeneg/go-dhcpd/internal/allocator"
+	"github.com/greeneg/go-dhcpd/internal/auth"
 	"github.com/greeneg/go-dhcpd/internal/config"
 	"github.com/greeneg/go-dhcpd/internal/db"
 	"github.com/greeneg/go-dhcpd/internal/dhcp"
@@ -47,7 +50,9 @@ func NewAPI(cfg *config.Config, database *db.Database, dhcpServer *dhcp.Server, 
 	return api
 }
 
-// setupRoutes configures API routes
+// setupRoutes configures API routes. /health, /version and the /metrics
+// hierarchy are unauthenticated; everything else (config, subnets, static
+// hosts, leases, deny list) requires HTTP Basic Auth (see authMiddleware).
 func (a *API) setupRoutes() {
 	// Health endpoint
 	a.engine.GET("/health", a.healthHandler)
@@ -57,38 +62,96 @@ func (a *API) setupRoutes() {
 	a.engine.GET("/metrics/dhcp", a.dhcpStatsHandler)
 	a.engine.GET("/metrics/database", a.databaseStatsHandler)
 
-	// Configuration endpoint
-	a.engine.GET("/config", a.configHandler)
-
-	// Subnet endpoints (backed by the config-provider plugin)
-	a.engine.GET("/subnets", a.subnetsHandler)
-	a.engine.POST("/subnets", a.addSubnetHandler)
-	a.engine.PUT("/subnets/:network", a.updateSubnetHandler)
-	a.engine.DELETE("/subnets/:network", a.deleteSubnetHandler)
-
-	// Static host endpoints (backed by the config-provider plugin)
-	a.engine.GET("/static", a.staticHostsHandler)
-	a.engine.POST("/static", a.addStaticHostHandler)
-	a.engine.PUT("/static/:mac", a.updateStaticHostHandler)
-	a.engine.DELETE("/static/:mac", a.deleteStaticHostHandler)
-
-	// Leases endpoints
-	a.engine.GET("/leases", a.leasesHandler)
-	a.engine.GET("/leases/active", a.activeLeasesHandler)
-	a.engine.GET("/leases/:mac", a.leaseByMACHandler)
-
-	// Deny addresses endpoint
-	a.engine.GET("/deny", a.denyAddressesHandler)
-
 	// Version endpoint
 	a.engine.GET("/version", a.versionHandler)
+
+	protected := a.engine.Group("")
+	protected.Use(a.authMiddleware())
+
+	// Configuration endpoint
+	protected.GET("/config", a.configHandler)
+
+	// Subnet endpoints (backed by the config-provider plugin)
+	protected.GET("/subnets", a.subnetsHandler)
+	protected.POST("/subnets", a.addSubnetHandler)
+	protected.PUT("/subnets/:network", a.updateSubnetHandler)
+	protected.DELETE("/subnets/:network", a.deleteSubnetHandler)
+
+	// Static host endpoints (backed by the config-provider plugin)
+	protected.GET("/static", a.staticHostsHandler)
+	protected.POST("/static", a.addStaticHostHandler)
+	protected.PUT("/static/:mac", a.updateStaticHostHandler)
+	protected.DELETE("/static/:mac", a.deleteStaticHostHandler)
+
+	// Leases endpoints
+	protected.GET("/leases", a.leasesHandler)
+	protected.GET("/leases/active", a.activeLeasesHandler)
+	protected.GET("/leases/:mac", a.leaseByMACHandler)
+
+	// Deny addresses endpoint
+	protected.GET("/deny", a.denyAddressesHandler)
 }
 
-// Start starts the API server
+// authMiddleware requires HTTP Basic Auth credentials accepted by PAM for
+// the "go-dhcpd" service, then authorizes the resulting identity against the
+// configured allowed users/groups (root is always authorized).
+func (a *API) authMiddleware() gin.HandlerFunc {
+	const realm = "Basic realm=\"go-dhcpd\""
+
+	return func(c *gin.Context) {
+		username, password, ok := c.Request.BasicAuth()
+		if !ok {
+			c.Header("WWW-Authenticate", realm)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+			return
+		}
+
+		if err := auth.Authenticate(username, password); err != nil {
+			logger.Warning(fmt.Sprintf("API auth: rejected credentials for user %q: %v", username, err))
+			c.Header("WWW-Authenticate", realm)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
+			return
+		}
+
+		if err := auth.Authorize(username, a.config.Auth.AllowedUsers, a.config.Auth.AllowedGroups); err != nil {
+			logger.Warning(fmt.Sprintf("API auth: user %q authenticated but is not authorized: %v", username, err))
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not authorized"})
+			return
+		}
+
+		c.Set("authUser", username)
+		c.Next()
+	}
+}
+
+// Start starts the API server, serving over HTTPS when global.tls.enabled
+// is set, otherwise plain HTTP.
 func (a *API) Start() error {
 	addr := fmt.Sprintf(":%d", a.config.Global.APIPort)
-	logger.Info(fmt.Sprintf("API server listening on %s", addr))
-	return a.engine.Run(addr)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: a.engine,
+	}
+
+	tlsCfg := a.config.Global.TLS
+	if tlsCfg.Enabled {
+		if tlsCfg.CertFile == "" || tlsCfg.KeyFile == "" {
+			return fmt.Errorf("global.tls.enabled is true but cert_file and/or key_file is not set")
+		}
+		if _, err := os.Stat(tlsCfg.CertFile); err != nil {
+			return fmt.Errorf("TLS certificate file %q is not accessible: %w", tlsCfg.CertFile, err)
+		}
+		if _, err := os.Stat(tlsCfg.KeyFile); err != nil {
+			return fmt.Errorf("TLS key file %q is not accessible: %w", tlsCfg.KeyFile, err)
+		}
+
+		server.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		logger.Info(fmt.Sprintf("API server listening on %s (HTTPS)", addr))
+		return server.ListenAndServeTLS(tlsCfg.CertFile, tlsCfg.KeyFile)
+	}
+
+	logger.Info(fmt.Sprintf("API server listening on %s (HTTP, unencrypted)", addr))
+	return server.ListenAndServe()
 }
 
 // Health check handler

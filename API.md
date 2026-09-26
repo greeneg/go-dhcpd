@@ -2,6 +2,40 @@
 
 The go-dhcpd daemon exposes a REST API on port 18467 (configurable) for monitoring and management.
 
+## Transport Security (TLS)
+
+The API can be served over HTTPS by setting `global.tls` in `config.json5`:
+
+```json5
+"tls": {
+  "enabled": true,
+  "cert_file": "/etc/go-dhcpd/tls/cert.pem",
+  "key_file": "/etc/go-dhcpd/tls/key.pem"
+}
+```
+
+`cert_file`/`key_file` must be PEM-encoded and readable by the daemon; the
+server enforces a minimum of TLS 1.2. **This is strongly recommended** since
+HTTP Basic Auth credentials are otherwise sent in the clear on every
+authenticated request. When `tls.enabled` is `false` (the default), the API
+falls back to plain HTTP.
+
+## Authentication
+
+`/health`, `/version` and the `/metrics` hierarchy are unauthenticated. Every
+other endpoint requires HTTP Basic Auth, verified against the host's local
+users via PAM (service `go-dhcpd`, installed to `/etc/pam.d/go-dhcpd` by
+`make install`). `root` is always authorized; other users/groups must be
+listed under `auth.allowed_users` / `auth.allowed_groups` in `config.json5`.
+
+```bash
+curl -u admin:password https://localhost:18467/leases
+```
+
+**Status Codes:**
+- `401 Unauthorized` - Missing or invalid credentials
+- `403 Forbidden` - Credentials valid but the user isn't authorized
+
 ## Plugin Architecture
 
 Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only.
@@ -9,8 +43,10 @@ Subnets and static leases are supplied by an external "config-provider" plugin, 
 ## Base URL
 
 ```
-http://localhost:18467
+https://localhost:18467
 ```
+
+Uses `http://` instead if `global.tls.enabled` is `false` (not recommended for authenticated endpoints).
 
 ## Endpoints
 
@@ -138,7 +174,8 @@ Get the current server configuration. `subnets` and `static` are fetched live fr
     "ping_retries": 2,
     "database_path": "/var/lib/go-dhcpd/dhcpd.db",
     "listen_address": "0.0.0.0",
-    "api_port": 18467
+    "api_port": 18467,
+    "tls": { "enabled": true, "cert_file": "...", "key_file": "..." }
   },
   "plugins": {
     "config_provider": { "name": "file", "path": "...", "settings": {...} }
@@ -296,7 +333,7 @@ Get lease information for a specific MAC address.
 
 **Example:**
 ```bash
-curl http://localhost:18467/leases/aa:bb:cc:dd:ee:ff
+curl https://localhost:18467/leases/aa:bb:cc:dd:ee:ff
 ```
 
 **Response:**
@@ -358,7 +395,7 @@ Get all denied (martian) addresses detected via ping check.
 #!/bin/bash
 
 # Check health
-if curl -sf http://localhost:18467/health > /dev/null; then
+if curl -sf https://localhost:18467/health > /dev/null; then
     echo "Server is healthy"
 else
     echo "Server is down!"
@@ -366,43 +403,43 @@ else
 fi
 
 # Get active lease count
-ACTIVE=$(curl -s http://localhost:18467/metrics | jq -r '.active_leases')
+ACTIVE=$(curl -s https://localhost:18467/metrics | jq -r '.active_leases')
 echo "Active leases: $ACTIVE"
 
 # Get error count
-ERRORS=$(curl -s http://localhost:18467/metrics/dhcp | jq -r '.errors')
+ERRORS=$(curl -s https://localhost:18467/metrics/dhcp | jq -r '.errors')
 echo "Errors: $ERRORS"
 ```
 
 ### Get All Active Leases
 
 ```bash
-curl -s http://localhost:18467/leases/active | jq '.leases[] | {ip: .IPAddress, mac: .MACAddress, hostname: .Hostname}'
+curl -s https://localhost:18467/leases/active | jq '.leases[] | {ip: .IPAddress, mac: .MACAddress, hostname: .Hostname}'
 ```
 
 ### Get All Non-static Leases
 
 ```bash
-curl -s http://localhost:18467/leases | jq '.leases[] | select(.IsStatic==false)'
+curl -s https://localhost:18467/leases | jq '.leases[] | select(.IsStatic==false)'
 ```
 
 ### Find Lease for Specific MAC
 
 ```bash
 MAC="aa:bb:cc:dd:ee:ff"
-curl -s "http://localhost:18467/leases/$MAC" | jq
+curl -s "https://localhost:18467/leases/$MAC" | jq
 ```
 
 ### Check for Denied Addresses
 
 ```bash
-curl -s http://localhost:18467/deny | jq '.addresses[] | {ip: .IPAddress, reason: .Reason}'
+curl -s https://localhost:18467/deny | jq '.addresses[] | {ip: .IPAddress, reason: .Reason}'
 ```
 
 ### Monitor Real-time Statistics
 
 ```bash
-watch -n 5 'curl -s http://localhost:18467/metrics/dhcp | jq'
+watch -n 5 'curl -s https://localhost:18467/metrics/dhcp | jq'
 ```
 
 ---
@@ -412,6 +449,8 @@ watch -n 5 'curl -s http://localhost:18467/metrics/dhcp | jq'
 All endpoints return standard HTTP status codes:
 
 - `200 OK` - Request successful
+- `401 Unauthorized` - Missing or invalid Basic Auth credentials (authenticated endpoints only)
+- `403 Forbidden` - Valid credentials, but the user is not authorized, or the config-provider plugin is read-only
 - `404 Not Found` - Resource not found
 - `500 Internal Server Error` - Server error
 
@@ -421,10 +460,9 @@ All responses are in JSON format with `Content-Type: application/json`.
 
 ## Authentication
 
-Currently, the API does not require authentication. It is recommended to:
-- Bind the API to localhost only (or use firewall rules)
-- Use a reverse proxy with authentication if exposing externally
-- Consider implementing authentication in future versions
+See [Authentication](#authentication-1) above: `/health`, `/version` and `/metrics*` are open, everything else requires HTTP Basic Auth checked against local PAM. Enable `global.tls` (see [Transport Security](#transport-security-tls)) so those credentials are never sent in the clear. For additional hardening, also consider:
+- Binding the API to localhost only (or use firewall rules)
+- Using a reverse proxy in front of the API if exposing externally
 
 ## Rate Limiting
 

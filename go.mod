@@ -5,6 +5,7 @@ go 1.27rc3
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/mattn/go-sqlite3 v1.14.50
+	github.com/msteinert/pam/v2 v2.1.0
 	github.com/yosuke-furukawa/json5 v0.1.1
 )
 

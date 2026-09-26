@@ -38,6 +38,14 @@ fi
 
 log_info "Setting up go-dhcpd server VM..."
 
+SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
+SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
+
+if [ -z "$SERVER_API_PASSWORD" ]; then
+    log_error "Set SERVER_API_PASSWORD before running this script"
+    exit 1
+fi
+
 # Update system
 log_info "Updating system packages..."
 dnf update -y
@@ -85,6 +93,13 @@ if ! id -u go-dhcpd &>/dev/null; then
     useradd -r -s /bin/bash -d /var/lib/go-dhcpd -m go-dhcpd
 fi
 
+# Create API integration test user
+log_info "Creating API integration test user..."
+if ! id -u "$SERVER_API_USER" &>/dev/null; then
+    useradd -m -s /bin/bash "$SERVER_API_USER"
+fi
+echo "${SERVER_API_USER}:${SERVER_API_PASSWORD}" | chpasswd
+
 # Create directories
 log_info "Creating directories..."
 mkdir -p /etc/go-dhcpd
@@ -97,7 +112,7 @@ chown -R go-dhcpd:go-dhcpd /var/log/go-dhcpd
 
 # Create test configuration
 log_info "Creating test configuration..."
-cat > /etc/go-dhcpd/config.json5 << 'EOF'
+cat > /etc/go-dhcpd/config.json5 << EOF
 {
   "global": {
     "lease_time": 3600,                // 1 hour for testing
@@ -109,7 +124,11 @@ cat > /etc/go-dhcpd/config.json5 << 'EOF'
     "listen_interface": "",             // Listen on all interfaces
     "api_port": 18467
   },
-  
+
+  "auth": {
+    "allowed_users": ["${SERVER_API_USER}"]
+  },
+
   "subnets": [
     {
       "network": "192.168.100.0",
@@ -138,6 +157,14 @@ cat > /etc/go-dhcpd/config.json5 << 'EOF'
 EOF
 
 chown go-dhcpd:go-dhcpd /etc/go-dhcpd/config.json5
+
+# Install PAM service for API authentication
+log_info "Installing PAM service for go-dhcpd API auth..."
+cat > /etc/pam.d/go-dhcpd << 'EOF'
+#%PAM-1.0
+auth       include      system-auth
+account    include      system-auth
+EOF
 
 # Add firewall rules
 log_info "Configuring firewall..."
@@ -189,3 +216,4 @@ log_info "  3. Start service: sudo systemctl start go-dhcpd"
 log_info "  4. Enable on boot: sudo systemctl enable go-dhcpd"
 log_info "  5. Check status: sudo systemctl status go-dhcpd"
 log_info "  6. View logs: sudo journalctl -u go-dhcpd -f"
+log_info "  7. Test API auth from a host with: curl -u \"${SERVER_API_USER}:\$SERVER_API_PASSWORD\" http://192.168.100.10:18467/config"

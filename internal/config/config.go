@@ -18,9 +18,19 @@ var DefaultPluginDir = "/usr/local/lib/go-dhcpd/plugins"
 // Config represents the complete DHCP server configuration
 type Config struct {
 	Global  GlobalConfig   `json:"global"`
+	Auth    AuthConfig     `json:"auth"`
 	Plugins PluginsConfig  `json:"plugins"`
 	Subnets []SubnetConfig `json:"subnets"`
 	Static  []StaticHost   `json:"static"`
+}
+
+// AuthConfig controls who may access authenticated API endpoints. Requests
+// are authenticated via HTTP Basic Auth against the host's local PAM stack;
+// this only controls authorization (who is allowed through) once a request's
+// credentials have been verified. root is always authorized.
+type AuthConfig struct {
+	AllowedUsers  []string `json:"allowed_users"`
+	AllowedGroups []string `json:"allowed_groups"`
 }
 
 // PluginConfig describes a single external plugin binary and the settings
@@ -40,14 +50,24 @@ type PluginsConfig struct {
 
 // GlobalConfig represents global DHCP settings
 type GlobalConfig struct {
-	LeaseTime       int    `json:"lease_time"`        // in seconds
-	NetBIOSNodeType int    `json:"netbios_node_type"` // 1=B-node, 2=P-node, 4=M-node, 8=H-node
-	PingTimeout     int    `json:"ping_timeout"`      // in milliseconds
-	PingRetries     int    `json:"ping_retries"`
-	DatabasePath    string `json:"database_path"`
-	ListenAddress   string `json:"listen_address"`   // IP address to bind to (deprecated, use ListenInterface)
-	ListenInterface string `json:"listen_interface"` // Network interface to bind to (e.g., eth0, ens33)
-	APIPort         int    `json:"api_port"`         // default 18467
+	LeaseTime       int       `json:"lease_time"`        // in seconds
+	NetBIOSNodeType int       `json:"netbios_node_type"` // 1=B-node, 2=P-node, 4=M-node, 8=H-node
+	PingTimeout     int       `json:"ping_timeout"`      // in milliseconds
+	PingRetries     int       `json:"ping_retries"`
+	DatabasePath    string    `json:"database_path"`
+	ListenAddress   string    `json:"listen_address"`   // IP address to bind to (deprecated, use ListenInterface)
+	ListenInterface string    `json:"listen_interface"` // Network interface to bind to (e.g., eth0, ens33)
+	APIPort         int       `json:"api_port"`         // default 18467
+	TLS             TLSConfig `json:"tls"`              // serve the API over HTTPS instead of plain HTTP
+}
+
+// TLSConfig controls whether the API server is served over HTTPS. When
+// Enabled, both CertFile and KeyFile must point to a valid PEM certificate
+// (chain) and private key readable by the daemon.
+type TLSConfig struct {
+	Enabled  bool   `json:"enabled"`
+	CertFile string `json:"cert_file"`
+	KeyFile  string `json:"key_file"`
 }
 
 // DynamicRange represents a dynamic IP allocation range

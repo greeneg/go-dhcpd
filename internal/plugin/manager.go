@@ -99,12 +99,13 @@ func (m *Manager) fetchCapabilities() (pluginapi.Capabilities, error) {
 	resp, err := m.call(pluginapi.ActionCapabilities, nil)
 	if err != nil {
 		// Fail safe: if we can't confirm the plugin supports writes, treat it as read-only.
-		return pluginapi.Capabilities{Name: m.name, ReadOnly: true}, err
+		return pluginapi.Capabilities{Name: m.name, Writable: false}, err
 	}
 
 	var caps pluginapi.Capabilities
 	if err := json.Unmarshal(resp.Data, &caps); err != nil {
-		return pluginapi.Capabilities{Name: m.name, ReadOnly: true}, fmt.Errorf("invalid capabilities response: %w", err)
+		// Fail safe: an unparsable response must not be treated as an implicit grant to write.
+		return pluginapi.Capabilities{Name: m.name, Writable: false}, fmt.Errorf("invalid capabilities response: %w", err)
 	}
 	return caps, nil
 }
@@ -210,11 +211,12 @@ func (m *Manager) writeStaticHost(action pluginapi.Action, host config.StaticHos
 	return err
 }
 
-// requireWritable rejects write operations client-side when the plugin has
-// advertised itself as read-only, avoiding an unnecessary subprocess call.
-// The plugin itself is still expected to enforce this independently.
+// requireWritable rejects write operations client-side unless the plugin has
+// explicitly advertised write support; the zero value (Writable == false)
+// denies writes, so a plugin must opt in rather than opt out. The plugin
+// itself is still expected to enforce this independently.
 func (m *Manager) requireWritable() error {
-	if m.caps.ReadOnly {
+	if !m.caps.Writable {
 		return fmt.Errorf("plugin %q is read-only and does not support write operations", m.name)
 	}
 	return nil

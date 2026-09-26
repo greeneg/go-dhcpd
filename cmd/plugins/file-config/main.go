@@ -49,7 +49,7 @@ func handleCapabilities() {
 	caps := pluginapi.Capabilities{
 		Name:     pluginName,
 		Version:  pluginVersion,
-		ReadOnly: true,
+		Writable: false,
 	}
 	_ = pluginapi.WriteSuccess(os.Stdout, caps)
 }

@@ -75,8 +75,8 @@ func main() {
 		os.Exit(1)
 	}
 	caps := pluginManager.Capabilities()
-	logger.Info(fmt.Sprintf("Config-provider plugin loaded: name=%s version=%s read_only=%t",
-		caps.Name, caps.Version, caps.ReadOnly))
+	logger.Info(fmt.Sprintf("Config-provider plugin loaded: name=%s version=%s writable=%t",
+		caps.Name, caps.Version, caps.Writable))
 
 	// Fetch static hosts from the plugin for lease pre-seeding
 	staticHosts, err := pluginManager.GetStaticHosts()

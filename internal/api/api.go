@@ -289,7 +289,7 @@ func (a *API) deleteStaticHostHandler(c *gin.Context) {
 // writePluginError maps a plugin-reported error to an HTTP response, using
 // 403 Forbidden when the plugin rejected the request because it is read-only.
 func (a *API) writePluginError(c *gin.Context, err error) {
-	if a.plugins.Capabilities().ReadOnly {
+	if !a.plugins.Capabilities().Writable {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}

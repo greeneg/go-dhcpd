@@ -66,11 +66,13 @@ type Response struct {
 }
 
 // Capabilities describes what a plugin supports. Plugins must answer
-// ActionCapabilities with this structure.
+// ActionCapabilities with this structure. Writable defaults to false (the
+// safe, read-only choice) for any plugin that omits it, so a plugin must
+// explicitly opt in to receiving write actions.
 type Capabilities struct {
 	Name     string `json:"name"`
 	Version  string `json:"version"`
-	ReadOnly bool   `json:"read_only"`
+	Writable bool   `json:"writable"`
 }
 
 // ReadRequest decodes a single Request from r.

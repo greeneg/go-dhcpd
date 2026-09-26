@@ -233,7 +233,7 @@ export SERVER_API_PASSWORD='set-this-to-the-password-used-by-setup-server.sh'
 curl http://192.168.100.10:18467/health
 curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/config
 curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/leases
-curl http://192.168.100.10:18467/metrics
+curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/metrics
 
 # Run full test suite
 ./run-tests.sh

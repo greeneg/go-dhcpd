@@ -17,11 +17,6 @@ if [ -z "$SERVER_API_PASSWORD" ]; then
     exit 1
 fi
 
-# Credentials for the dedicated API test account created by setup-server.sh.
-# Override via environment if your fixture uses different values.
-API_USER="${API_USER:-apitest}"
-API_PASSWORD="${API_PASSWORD:-IntegrationTest2026Pass}"
-
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -93,27 +88,22 @@ test_server_health() {
 test_server_api() {
     log_test "Testing server API endpoints..."
     
-<<<<<<< HEAD
-    # Test /config (requires authentication)
-    if curl -s -f -u "${API_USER}:${API_PASSWORD}" http://192.168.100.10:18467/config | grep -q "subnets"; then
-=======
     # Test /config
     if auth_curl "${SERVER_API_URL}/config" | grep -q "subnets"; then
->>>>>>> 0c34ed7c3d191ee7d6dea40eb09f67e960a79452
         test_result 0 "Server /config endpoint returns valid data"
     else
         test_result 1 "Server /config endpoint failed"
     fi
     
     # Test /metrics
-    if auth_curl "${SERVER_API_URL}/metrics" > /dev/null 2>&1; then
+    if curl -s -f "${SERVER_API_URL}/metrics" > /dev/null 2>&1; then
         test_result 0 "Server /metrics endpoint responds"
     else
         test_result 1 "Server /metrics endpoint failed"
     fi
     
     # Test /version
-    if auth_curl "${SERVER_API_URL}/version" | grep -q "version"; then
+    if curl -s -f "${SERVER_API_URL}/version" | grep -q "version"; then
         test_result 0 "Server /version endpoint returns valid data"
     else
         test_result 1 "Server /version endpoint failed"
@@ -163,13 +153,8 @@ EOF
 test_lease_database() {
     log_test "Testing lease database..."
     
-<<<<<<< HEAD
-    # Check if leases are recorded (requires authentication)
-    if curl -s -u "${API_USER}:${API_PASSWORD}" http://192.168.100.10:18467/leases | grep -q "ip_address"; then
-=======
     # Check if leases are recorded
     if auth_curl "${SERVER_API_URL}/leases" | grep -q "ip_address"; then
->>>>>>> 0c34ed7c3d191ee7d6dea40eb09f67e960a79452
         test_result 0 "Lease database contains entries"
     else
         test_result 1 "Lease database is empty or unreachable"

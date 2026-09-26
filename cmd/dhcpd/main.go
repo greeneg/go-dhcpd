@@ -3,11 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/greeneg/go-dhcpd/internal/allocator"
 	"github.com/greeneg/go-dhcpd/internal/api"
@@ -78,18 +76,6 @@ func main() {
 	logger.Info(fmt.Sprintf("Config-provider plugin loaded: name=%s version=%s writable=%t",
 		caps.Name, caps.Version, caps.Writable))
 
-	// Fetch static hosts from the plugin for lease pre-seeding
-	staticHosts, err := pluginManager.GetStaticHosts()
-	if err != nil {
-		logger.Critical(fmt.Sprintf("Failed to fetch static hosts from plugin: %v", err))
-		os.Exit(1)
-	}
-
-	// Initialize static leases
-	if err := initializeStaticLeases(staticHosts, database); err != nil {
-		logger.Warning(fmt.Sprintf("Failed to initialize static leases: %v", err))
-	}
-
 	// Create allocator
 	alloc, err := allocator.NewAllocator(cfg, database, pluginManager)
 	if err != nil {
@@ -97,6 +83,12 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Info("IP allocator initialized")
+
+	// Seed the database with static leases so they're immediately reflected
+	// in lease queries/metrics without waiting for a client to request one.
+	if err := seedStaticLeases(alloc); err != nil {
+		logger.Warning(fmt.Sprintf("Failed to seed static leases: %v", err))
+	}
 
 	// Create DHCP server
 	dhcpServer, err := dhcp.NewServer(cfg, alloc)
@@ -137,83 +129,17 @@ func main() {
 	logger.Info("Shutdown complete")
 }
 
-// initializeStaticLeases pre-loads static host assignments into the database
-func initializeStaticLeases(staticHosts []config.StaticHost, database *db.Database) error {
-	for _, static := range staticHosts {
-		// Parse IP address (or resolve hostname)
-		var ip string
-		if parsed := parseIP(static.IPAddress); parsed != "" {
-			ip = parsed
-		} else {
-			// Try to resolve as hostname
-			resolved, err := resolveHostname(static.IPAddress)
-			if err != nil {
-				logger.Warning(fmt.Sprintf("Failed to resolve hostname %s: %v", static.IPAddress, err))
-				continue
-			}
-			ip = resolved
-		}
-
-		// Check if lease already exists
-		existingLease, err := database.GetLeaseByIP(ip)
-		if err != nil {
-			return err
-		}
-
-		if existingLease != nil {
-			// Update if needed
-			if existingLease.MACAddress != static.MACAddress {
-				logger.Info(fmt.Sprintf("Updating static lease for %s: %s -> %s",
-					ip, existingLease.MACAddress, static.MACAddress))
-			}
+// seedStaticLeases pre-loads static host assignments into the database using
+// the allocator's shared reconciliation logic, so startup seeding and
+// API-driven static-host writes stay consistent.
+func seedStaticLeases(alloc *allocator.Allocator) error {
+	for _, static := range alloc.StaticHosts() {
+		if err := alloc.SeedStaticLease(static); err != nil {
+			logger.Warning(fmt.Sprintf("Failed to seed static lease for %s: %v", static.MACAddress, err))
 			continue
 		}
-
-		// Create static lease
-		lease := &db.Lease{
-			MACAddress: static.MACAddress,
-			IPAddress:  ip,
-			Hostname:   static.Hostname,
-			LeaseStart: time.Now(),
-			LeaseEnd:   time.Now().AddDate(100, 0, 0), // 100 years (effectively permanent)
-			State:      "active",
-			IsStatic:   true,
-		}
-
-		if err := database.AddLease(lease); err != nil {
-			logger.Warning(fmt.Sprintf("Failed to add static lease for %s: %v", static.MACAddress, err))
-			continue
-		}
-
-		logger.Info(fmt.Sprintf("Added static lease: %s -> %s (%s)",
-			static.MACAddress, ip, static.Hostname))
+		logger.Info(fmt.Sprintf("Seeded static lease: %s -> %s (%s)",
+			static.MACAddress, static.IPAddress, static.Hostname))
 	}
-
 	return nil
-}
-
-// parseIP tries to parse a string as an IP address
-func parseIP(s string) string {
-	if ip := net.ParseIP(s); ip != nil {
-		return ip.String()
-	}
-	return ""
-}
-
-// resolveHostname resolves a hostname to an IP address
-func resolveHostname(hostname string) (string, error) {
-	ips, err := net.LookupIP(hostname)
-	if err != nil {
-		return "", err
-	}
-	if len(ips) == 0 {
-		return "", fmt.Errorf("no IP addresses found for %s", hostname)
-	}
-	// Return first IPv4 address
-	for _, ip := range ips {
-		if ip.To4() != nil {
-			return ip.String(), nil
-		}
-	}
-	return "", fmt.Errorf("no IPv4 address found for %s", hostname)
 }

@@ -256,6 +256,9 @@ func (a *API) addStaticHostHandler(c *gin.Context) {
 		return
 	}
 	a.refreshAllocator(c)
+	if err := a.alloc.SeedStaticLease(host); err != nil {
+		logger.Error(fmt.Sprintf("Failed to seed database lease for static host %s: %v", host.MACAddress, err))
+	}
 	c.JSON(http.StatusCreated, host)
 }
 
@@ -272,6 +275,14 @@ func (a *API) updateStaticHostHandler(c *gin.Context) {
 		return
 	}
 	a.refreshAllocator(c)
+	// Revoke any existing lease before re-seeding, so a changed IP address
+	// doesn't leave the old address permanently reserved under this MAC.
+	if err := a.alloc.RevokeStaticLease(host.MACAddress); err != nil {
+		logger.Error(fmt.Sprintf("Failed to revoke prior database lease for static host %s: %v", host.MACAddress, err))
+	}
+	if err := a.alloc.SeedStaticLease(host); err != nil {
+		logger.Error(fmt.Sprintf("Failed to seed database lease for static host %s: %v", host.MACAddress, err))
+	}
 	c.JSON(http.StatusOK, host)
 }
 
@@ -283,6 +294,11 @@ func (a *API) deleteStaticHostHandler(c *gin.Context) {
 		return
 	}
 	a.refreshAllocator(c)
+	// Revoke the database lease so AllocateIP can't keep serving the deleted
+	// assignment from a still-active row until it would otherwise expire.
+	if err := a.alloc.RevokeStaticLease(mac); err != nil {
+		logger.Error(fmt.Sprintf("Failed to revoke database lease for deleted static host %s: %v", mac, err))
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "static host deleted", "mac_address": mac})
 }
 

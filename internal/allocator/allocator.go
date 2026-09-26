@@ -338,6 +338,74 @@ func (a *Allocator) ReleaseLease(macAddr string) error {
 	return a.db.UpdateLease(lease)
 }
 
+// SeedStaticLease creates or refreshes a long-lived (effectively permanent)
+// database lease for a static host, mirroring the daemon's startup seeding
+// so config-provider writes (add/update) stay consistent with what a
+// restart would produce.
+func (a *Allocator) SeedStaticLease(host config.StaticHost) error {
+	ip, err := resolveStaticAddress(host.IPAddress)
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	lease := &db.Lease{
+		MACAddress: host.MACAddress,
+		IPAddress:  ip,
+		Hostname:   host.Hostname,
+		LeaseStart: now,
+		LeaseEnd:   now.AddDate(100, 0, 0), // effectively permanent
+		State:      "active",
+		IsStatic:   true,
+	}
+
+	existingLease, err := a.db.GetLeaseByIP(ip)
+	if err != nil {
+		return err
+	}
+	if existingLease != nil {
+		lease.ID = existingLease.ID
+		return a.db.UpdateLease(lease)
+	}
+	return a.db.AddLease(lease)
+}
+
+// RevokeStaticLease expires any active database lease held by macAddr. It is
+// a no-op, not an error, when no active lease exists for that MAC, so
+// callers can use it unconditionally when a static host is deleted or
+// changes IP address to avoid leaving a stale, permanently-active row behind.
+func (a *Allocator) RevokeStaticLease(macAddr string) error {
+	lease, err := a.db.GetLeaseByMAC(macAddr)
+	if err != nil {
+		return err
+	}
+	if lease == nil {
+		return nil
+	}
+	lease.State = "expired"
+	lease.LeaseEnd = time.Now()
+	return a.db.UpdateLease(lease)
+}
+
+// resolveStaticAddress resolves a static host's configured address, which
+// may be a literal IP or a hostname to look up, to a dotted IPv4 string.
+func resolveStaticAddress(addr string) (string, error) {
+	if ip := net.ParseIP(addr); ip != nil {
+		return ip.String(), nil
+	}
+
+	ips, err := net.LookupIP(addr)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve hostname %q: %w", addr, err)
+	}
+	for _, ip := range ips {
+		if v4 := ip.To4(); v4 != nil {
+			return v4.String(), nil
+		}
+	}
+	return "", fmt.Errorf("no IPv4 address found for %q", addr)
+}
+
 // Helper functions
 
 // nextIP returns the next IP address

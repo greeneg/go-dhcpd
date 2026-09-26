@@ -226,10 +226,13 @@ ip addr show eth0        # Show IP address
 #### From Host
 
 ```bash
+export SERVER_API_USER=dhcpd-test-admin
+export SERVER_API_PASSWORD='set-this-to-the-password-used-by-setup-server.sh'
+
 # Check server API
 curl http://192.168.100.10:18467/health
-curl -u dhcpd-test-admin:dhcpd-test-password http://192.168.100.10:18467/config
-curl -u dhcpd-test-admin:dhcpd-test-password http://192.168.100.10:18467/leases
+curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/config
+curl -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/leases
 curl http://192.168.100.10:18467/metrics
 
 # Run full test suite
@@ -272,8 +275,8 @@ The server is configured with:
 - **DNS Servers**: 192.168.100.10, 8.8.8.8
 - **Gateway**: 192.168.100.1
 - **Domain**: dhcpd.test
-- **API Test User**: `dhcpd-test-admin`
-- **API Test Password**: `dhcpd-test-password`
+- **API Test User**: `dhcpd-test-admin` (override with `SERVER_API_USER`)
+- **API Test Password**: Set via `SERVER_API_PASSWORD` when running `setup-server.sh` and `run-tests.sh`
 
 Configuration file: `/etc/go-dhcpd/config.json5` on server VM
 

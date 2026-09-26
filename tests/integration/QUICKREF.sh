@@ -35,8 +35,8 @@ sudo tcpdump -i eth0 port 67 or port 68 -v  # Capture DHCP traffic
 
 # Check API endpoints
 curl http://192.168.100.10:18467/health
-curl http://192.168.100.10:18467/config
-curl http://192.168.100.10:18467/leases
+curl -u dhcpd-test-admin:dhcpd-test-password http://192.168.100.10:18467/config
+curl -u dhcpd-test-admin:dhcpd-test-password http://192.168.100.10:18467/leases
 curl http://192.168.100.10:18467/metrics
 
 # CLIENT VM COMMANDS
@@ -68,6 +68,7 @@ sudo virsh net-info go-dhcpd-test-net
 
 # Access server API from host
 curl http://192.168.100.10:18467/health
+curl -u dhcpd-test-admin:dhcpd-test-password http://192.168.100.10:18467/config
 
 # View VM resources
 sudo virsh domstats go-dhcpd-server

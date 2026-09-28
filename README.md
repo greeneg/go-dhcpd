@@ -18,7 +18,7 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
 - **Plugin Architecture**
   - Subnets and static leases are supplied by an external, independently
     executed config-provider plugin
-  - Bundled `file` plugin reads them from `config.json5` (read-only)
+  - Bundled `file-config` plugin reads them from `config.json5` (read-only)
   - Future plugins can add write support (e.g. database-backed storage)
   
 - **Address Management**
@@ -129,9 +129,9 @@ Create a configuration file at `/etc/go-dhcpd/config.json5`:
 
   "plugins": {
     "config_provider": {
-      "name": "file",
+      "name": "file-config",
       // "path" is optional; defaults to
-      // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin", where
+      // "<install_prefix>/lib/go-dhcpd/plugins/<name>.plugin", where
       // install_prefix is whatever INSTALL_PREFIX `make install` used
       // (baked into the binary at build time, default /usr/local)
       "settings": {
@@ -178,9 +178,9 @@ executable configured under `plugins.config_provider` in `config.json5`:
 ```json5
 "plugins": {
   "config_provider": {
-    "name": "file",
+    "name": "file-config",
     // "path" is optional; defaults to
-    // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin", where
+    // "<install_prefix>/lib/go-dhcpd/plugins/<name>.plugin", where
     // install_prefix is whatever INSTALL_PREFIX `make install` used
     // (baked into the binary at build time, default /usr/local)
     "settings": {
@@ -195,7 +195,7 @@ request, sending a JSON request on the plugin's stdin and reading a JSON
 response from its stdout (see `internal/pluginapi` for the protocol). This
 keeps plugins fully decoupled from the daemon process.
 
-The bundled `file` plugin (`cmd/plugins/file-config`) reproduces today's
+The bundled `file-config` plugin (`cmd/plugins/file-config`) reproduces today's
 behavior: it reads the `subnets` and `static` arrays from `config.json5`
 (or another file specified via the `config_path` setting). It is
 intentionally **read-only** — the `/subnets` and `/static` write endpoints

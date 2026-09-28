@@ -44,15 +44,15 @@
   //
   // go-dhcpd loads subnets and static leases through an external
   // "config_provider" plugin, invoked as an independent binary. The
-  // bundled "file" plugin reads subnets/static hosts from this same
+  // bundled "file-config" plugin reads subnets/static hosts from this same
   // config.json5 file and is read-only: it does not support write
   // operations via the API. Future plugins (e.g. database-backed) can
   // support write access.
   "plugins": {
     "config_provider": {
-      "name": "file",
+      "name": "file-config",
       // "path" is optional; when omitted it defaults to
-      // "<install_prefix>/lib/go-dhcpd/plugins/file-config.plugin",
+      // "<install_prefix>/lib/go-dhcpd/plugins/<name>.plugin",
       // using the prefix the dhcpd binary was built/installed with
       // (see Makefile's INSTALL_PREFIX). Set it explicitly to override.
       //

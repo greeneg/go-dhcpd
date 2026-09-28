@@ -38,7 +38,7 @@ curl -u admin:password https://localhost:18467/leases
 
 ## Plugin Architecture
 
-Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file` plugin is read-only, while the bundled `sqlite3-config` plugin supports full subnet CRUD (static-lease writes are not yet implemented in `sqlite3-config`).
+Subnets and static leases are supplied by an external "config-provider" plugin, configured under `plugins.config_provider` in `config.json5` and invoked by the daemon as an independent subprocess (see the main [README](README.md#plugin-architecture) for details). The `/subnets` and `/static` endpoints read and write through this plugin. Whether writes are permitted depends entirely on the loaded plugin's capabilities; the bundled `file-config` plugin is read-only, while the bundled `sqlite3-config` plugin supports full subnet CRUD (static-lease writes are not yet implemented in `sqlite3-config`).
 
 ## Base URL
 
@@ -178,7 +178,7 @@ Get the current server configuration. `subnets` and `static` are fetched live fr
     "tls": { "enabled": true, "cert_file": "...", "key_file": "..." }
   },
   "plugins": {
-    "config_provider": { "name": "file", "path": "...", "settings": {...} }
+    "config_provider": { "name": "file-config", "path": "...", "settings": {...} }
   },
   "subnets": [...],
   "static": [...]
@@ -278,7 +278,7 @@ Replace an existing static host identified by MAC address. Requires a writable p
 
 Remove a static host identified by MAC address. Requires a writable plugin.
 
-**Note:** The bundled `file` plugin (which reads subnets/static hosts from `config.json5`) is read-only; all of the write endpoints above return `403 Forbidden` when it is the active config-provider.
+**Note:** The bundled `file-config` plugin (which reads subnets/static hosts from `config.json5`) is read-only; all of the write endpoints above return `403 Forbidden` when it is the active config-provider.
 
 ---
 

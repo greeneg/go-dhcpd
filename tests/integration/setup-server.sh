@@ -39,7 +39,12 @@ fi
 log_info "Setting up go-dhcpd server VM..."
 
 SERVER_API_USER="${SERVER_API_USER:-apitest}"
-SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-"IntegrationTest2026Pass"}"
+SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
+
+if [[ -z "$SERVER_API_PASSWORD" ]]; then
+    log_error "Set SERVER_API_PASSWORD before running this script"
+    exit 1
+fi
 
 # Update system
 log_info "Updating system packages..."
@@ -91,16 +96,14 @@ fi
 # Create a dedicated local account for authenticating against the API.
 # This is a test-only credential for the isolated integration test VM;
 # it is not used for anything outside this fixture.
-API_TEST_USER="apitest"
-API_TEST_PASSWORD="IntegrationTest2026Pass"
-log_info "Creating API test user '$API_TEST_USER'..."
-if ! id -u "$API_TEST_USER" &>/dev/null; then
-    useradd -r -s /sbin/nologin -M "$API_TEST_USER"
+log_info "Creating API test user '$SERVER_API_USER'..."
+if ! id -u "$SERVER_API_USER" &>/dev/null; then
+    useradd -r -s /sbin/nologin -M "$SERVER_API_USER"
 fi
-echo "$API_TEST_USER:$API_TEST_PASSWORD" | chpasswd
+echo "$SERVER_API_USER:$SERVER_API_PASSWORD" | chpasswd
 
 # Install the go-dhcpd PAM service so the API can authenticate
-# $API_TEST_USER (and root) via HTTP Basic Auth.
+# $SERVER_API_USER (and root) via HTTP Basic Auth.
 log_info "Installing go-dhcpd PAM service..."
 cat > /etc/pam.d/go-dhcpd << 'EOF'
 #%PAM-1.0

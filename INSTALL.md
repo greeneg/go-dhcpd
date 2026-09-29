@@ -34,7 +34,7 @@ binary is compiled knowing where its plugin directory will live, e.g.
 
 This will:
 - Install the binary to `$(INSTALL_PREFIX)/bin/dhcpd`
-- Install the `file` config-provider plugin to `$(INSTALL_PREFIX)/lib/go-dhcpd/plugins/file-config.plugin`
+- Install the `file-config` config-provider plugin to `$(INSTALL_PREFIX)/lib/go-dhcpd/plugins/file-config.plugin`
 - Install the `go-dhcpd` PAM service to `/etc/pam.d/go-dhcpd` (auto-detecting
   a `system-auth` or `common-auth` style stack; see `pam.d/` if neither is
   found and it needs installing manually)
@@ -54,8 +54,8 @@ sudo vim /etc/go-dhcpd/config.json5
 At minimum, configure:
 - `global.tls` - **Strongly recommended:** enable HTTPS for the API so Basic Auth credentials aren't sent in the clear (see below)
 - `auth.allowed_users` / `auth.allowed_groups` - Non-root accounts allowed to reach authenticated API endpoints (root is always allowed)
-- `plugins.config_provider` - Points at the config-provider plugin binary (defaults to the installed `file` plugin)
-- `subnets` - Define your network ranges (read by the `file` plugin)
+- `plugins.config_provider` - Points at the config-provider plugin binary (defaults to the installed `file-config` plugin)
+- `subnets` - Define your network ranges (read by the `file-config` plugin)
 - `dynamic_ranges` - DHCP pool using CIDR notation
 - `domain_name_servers` - DNS servers for clients
 - `routers` - Default gateway for clients

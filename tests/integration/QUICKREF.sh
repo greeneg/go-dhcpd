@@ -34,12 +34,12 @@ sudo journalctl -u go-dhcpd -f    # View service logs
 sudo tcpdump -i eth0 port 67 or port 68 -v  # Capture DHCP traffic
 
 # Check API endpoints
-export SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
+export SERVER_API_USER="${SERVER_API_USER:-apitest}"
 # Set SERVER_API_PASSWORD to the password you used with setup-server.sh
-curl http://192.168.100.10:18467/health
-curl -u "${SERVER_API_USER:-dhcpd-test-admin}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/config
-curl -u "${SERVER_API_USER:-dhcpd-test-admin}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/leases
-curl http://192.168.100.10:18467/metrics
+curl "${SERVER_API_URL}/health"
+curl -u "${SERVER_API_USER:-apitest}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/config"
+curl -u "${SERVER_API_USER:-apitest}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/leases"
+curl "${SERVER_API_URL}/metrics"
 
 # CLIENT VM COMMANDS
 # ------------------
@@ -69,8 +69,8 @@ sudo virsh net-list --all
 sudo virsh net-info go-dhcpd-test-net
 
 # Access server API from host
-curl http://192.168.100.10:18467/health
-curl -u "${SERVER_API_USER:-dhcpd-test-admin}:${SERVER_API_PASSWORD}" http://192.168.100.10:18467/config
+curl "${SERVER_API_URL}/health"
+curl -u "${SERVER_API_USER:-apitest}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/config"
 
 # View VM resources
 sudo virsh domstats go-dhcpd-server

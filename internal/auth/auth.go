@@ -20,7 +20,7 @@ const ServiceName = "go-dhcpd"
 func Authenticate(username, password string) error {
 	t, err := pam.StartFunc(ServiceName, username, func(s pam.Style, _ string) (string, error) {
 		switch s {
-case pam.PromptEchoOff:
+		case pam.PromptEchoOff:
 			return password, nil
 		case pam.PromptEchoOn:
 			return username, nil

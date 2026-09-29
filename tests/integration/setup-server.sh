@@ -38,10 +38,10 @@ fi
 
 log_info "Setting up go-dhcpd server VM..."
 
-SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
+SERVER_API_USER="${SERVER_API_USER:-apitest}"
 SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
 
-if [ -z "$SERVER_API_PASSWORD" ]; then
+if [[ -z "$SERVER_API_PASSWORD" ]]; then
     log_error "Set SERVER_API_PASSWORD before running this script"
     exit 1
 fi
@@ -93,12 +93,23 @@ if ! id -u go-dhcpd &>/dev/null; then
     useradd -r -s /bin/bash -d /var/lib/go-dhcpd -m go-dhcpd
 fi
 
-# Create API integration test user
-log_info "Creating API integration test user..."
+# Create a dedicated local account for authenticating against the API.
+# This is a test-only credential for the isolated integration test VM;
+# it is not used for anything outside this fixture.
+log_info "Creating API test user '$SERVER_API_USER'..."
 if ! id -u "$SERVER_API_USER" &>/dev/null; then
-    useradd -m -s /bin/bash "$SERVER_API_USER"
+    useradd -r -s /sbin/nologin -M "$SERVER_API_USER"
 fi
-echo "${SERVER_API_USER}:${SERVER_API_PASSWORD}" | chpasswd
+echo "$SERVER_API_USER:$SERVER_API_PASSWORD" | chpasswd
+
+# Install the go-dhcpd PAM service so the API can authenticate
+# $SERVER_API_USER (and root) via HTTP Basic Auth.
+log_info "Installing go-dhcpd PAM service..."
+cat > /etc/pam.d/go-dhcpd << 'EOF'
+#%PAM-1.0
+auth       include      system-auth
+account    include      system-auth
+EOF
 
 # Create directories
 log_info "Creating directories..."
@@ -125,10 +136,14 @@ cat > /etc/go-dhcpd/config.json5 << EOF
     "api_port": 18467
   },
 
+  // Authorize the dedicated API test account created above (root is
+  // always authorized) to reach authenticated endpoints like /config
+  // and /leases.
   "auth": {
-    "allowed_users": ["${SERVER_API_USER}"]
+    "allowed_users": ["apitest"],
+    "allowed_groups": []
   },
-
+  
   "subnets": [
     {
       "network": "192.168.100.0",

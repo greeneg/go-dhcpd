@@ -11,9 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_API_URL="${SERVER_API_URL:-http://192.168.100.10:18467}"
 SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
 SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
+API_USER="${API_USER:-dhcpd-test-admin}"
+API_PASSWORD="${API_PASSWORD:-}"
 
 if [ -z "$SERVER_API_PASSWORD" ]; then
     echo "Set SERVER_API_PASSWORD before running integration tests" >&2
+    exit 1
+fi
+
+if [ -z "$API_PASSWORD" ]; then
+    echo "Set API_PASSWORD before running integration tests" >&2
     exit 1
 fi
 
@@ -38,10 +45,6 @@ log_error() {
 
 log_test() {
     echo -e "${YELLOW}[TEST]${NC} $*"
-}
-
-auth_curl() {
-    curl -s -f -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" "$@"
 }
 
 # Test results
@@ -154,7 +157,7 @@ test_lease_database() {
     log_test "Testing lease database..."
     
     # Check if leases are recorded (requires authentication)
-    if curl -s -u "${API_USER}:${API_PASSWORD}" http://192.168.100.10:18467/leases | grep -q "ip_address"; then
+    if curl -s -f -u "${API_USER}:${API_PASSWORD}" http://192.168.100.10:18467/leases | grep -q "ip_address"; then
         test_result 0 "Lease database contains entries"
     else
         test_result 1 "Lease database is empty or unreachable"

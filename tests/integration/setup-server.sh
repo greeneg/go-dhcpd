@@ -38,13 +38,8 @@ fi
 
 log_info "Setting up go-dhcpd server VM..."
 
-SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
-SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
-
-if [ -z "$SERVER_API_PASSWORD" ]; then
-    log_error "Set SERVER_API_PASSWORD before running this script"
-    exit 1
-fi
+SERVER_API_USER="${SERVER_API_USER:-apitest}"
+SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-"IntegrationTest2026Pass"}"
 
 # Update system
 log_info "Updating system packages..."

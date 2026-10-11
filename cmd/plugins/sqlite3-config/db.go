@@ -407,7 +407,7 @@ func insertStaticHost(db *sql.DB, host *config.StaticHost) error {
 		normalizeMAC(host.MACAddress), host.IPAddress, nullableString(host.Hostname),
 	)
 	if err != nil {
-		return fmt.Errorf("static host %q may already exist: %w", host.MACAddress, err)
+		return fmt.Errorf("failed to insert static host %q: %w", host.MACAddress, err)
 	}
 	return nil
 }

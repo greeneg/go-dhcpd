@@ -74,7 +74,7 @@ func handleGetSubnets(req *pluginapi.Request) {
 func handleAddSubnet(req *pluginapi.Request) {
 	subnet, err := decodeSubnet(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -95,7 +95,7 @@ func handleAddSubnet(req *pluginapi.Request) {
 func handleUpdateSubnet(req *pluginapi.Request) {
 	subnet, err := decodeSubnet(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -118,7 +118,7 @@ func handleDeleteSubnet(req *pluginapi.Request) {
 		Network string `json:"network"`
 	}
 	if err := json.Unmarshal(req.Data, &payload); err != nil || payload.Network == "" {
-		_ = pluginapi.WriteError(os.Stdout, "delete_subnet requires a non-empty \"network\" field")
+		_ = pluginapi.WriteValidationError(os.Stdout, "delete_subnet requires a non-empty \"network\" field")
 		return
 	}
 
@@ -167,7 +167,7 @@ func handleGetStaticHosts(req *pluginapi.Request) {
 func handleAddStaticHost(req *pluginapi.Request) {
 	host, err := decodeStaticHost(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -188,7 +188,7 @@ func handleAddStaticHost(req *pluginapi.Request) {
 func handleUpdateStaticHost(req *pluginapi.Request) {
 	host, err := decodeStaticHost(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -211,7 +211,7 @@ func handleDeleteStaticHost(req *pluginapi.Request) {
 		MACAddress string `json:"mac_address"`
 	}
 	if err := json.Unmarshal(req.Data, &payload); err != nil || payload.MACAddress == "" {
-		_ = pluginapi.WriteError(os.Stdout, "delete_static_host requires a non-empty \"mac_address\" field")
+		_ = pluginapi.WriteValidationError(os.Stdout, "delete_static_host requires a non-empty \"mac_address\" field")
 		return
 	}
 	payload.MACAddress = config.NormalizeMAC(payload.MACAddress)

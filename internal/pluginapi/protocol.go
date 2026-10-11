@@ -44,11 +44,28 @@ const (
 	ActionDeleteStaticHost Action = "delete_static_host"
 )
 
-// StatusSuccess and StatusError are the two values a Response.Status may hold.
+// StatusSuccess, StatusError, and StatusValidationError are the values a
+// Response.Status may hold. StatusValidationError marks a rejection caused
+// by invalid client input (missing/malformed fields, bad MAC, etc.), as
+// opposed to StatusError's plugin execution/storage failures, so callers
+// can map the two to different HTTP status ranges (4xx vs 5xx).
 const (
-	StatusSuccess = "success"
-	StatusError   = "error"
+	StatusSuccess         = "success"
+	StatusError           = "error"
+	StatusValidationError = "validation_error"
 )
+
+// ValidationError indicates a plugin rejected a request as invalid client
+// input (see StatusValidationError) rather than an execution or storage
+// failure. Callers can use errors.As to detect it and respond with a 4xx
+// status instead of 500.
+type ValidationError struct {
+	Message string
+}
+
+func (e *ValidationError) Error() string {
+	return e.Message
+}
 
 // Request is sent by the daemon to a plugin on stdin.
 type Request struct {
@@ -101,6 +118,14 @@ func WriteSuccess(w io.Writer, data any) error {
 // WriteError encodes a failed Response carrying message to w.
 func WriteError(w io.Writer, message string) error {
 	return json.NewEncoder(w).Encode(Response{Status: StatusError, Message: message})
+}
+
+// WriteValidationError encodes a validation-failure Response carrying
+// message to w. Use this instead of WriteError for invalid client input
+// (missing fields, malformed MAC, etc.) so the daemon can map it to a 4xx
+// HTTP status rather than 500.
+func WriteValidationError(w io.Writer, message string) error {
+	return json.NewEncoder(w).Encode(Response{Status: StatusValidationError, Message: message})
 }
 
 // ReadResponse decodes a single Response from r.

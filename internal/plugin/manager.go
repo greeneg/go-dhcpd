@@ -256,6 +256,9 @@ func (m *Manager) call(action pluginapi.Action, data json.RawMessage) (*pluginap
 		return nil, fmt.Errorf("plugin %q returned invalid response: %w", m.name, err)
 	}
 
+	if resp.Status == pluginapi.StatusValidationError {
+		return nil, &pluginapi.ValidationError{Message: resp.Message}
+	}
 	if resp.Status != pluginapi.StatusSuccess {
 		return nil, fmt.Errorf("plugin %q reported an error: %s", m.name, resp.Message)
 	}

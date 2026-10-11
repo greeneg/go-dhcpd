@@ -314,6 +314,7 @@ func (a *API) addStaticHostHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	host.MACAddress = config.NormalizeMAC(host.MACAddress)
 	if err := a.plugins.AddStaticHost(host); err != nil {
 		a.writePluginError(c, err)
 		return
@@ -332,7 +333,7 @@ func (a *API) updateStaticHostHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	host.MACAddress = c.Param("mac")
+	host.MACAddress = config.NormalizeMAC(c.Param("mac"))
 	if err := a.plugins.UpdateStaticHost(host); err != nil {
 		a.writePluginError(c, err)
 		return
@@ -351,7 +352,7 @@ func (a *API) updateStaticHostHandler(c *gin.Context) {
 
 // deleteStaticHostHandler removes a static host via the config-provider plugin
 func (a *API) deleteStaticHostHandler(c *gin.Context) {
-	mac := c.Param("mac")
+	mac := config.NormalizeMAC(c.Param("mac"))
 	if err := a.plugins.DeleteStaticHost(mac); err != nil {
 		a.writePluginError(c, err)
 		return

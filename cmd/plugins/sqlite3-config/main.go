@@ -214,6 +214,7 @@ func handleDeleteStaticHost(req *pluginapi.Request) {
 		_ = pluginapi.WriteError(os.Stdout, "delete_static_host requires a non-empty \"mac_address\" field")
 		return
 	}
+	payload.MACAddress = config.NormalizeMAC(payload.MACAddress)
 
 	db, err := openDB(req)
 	if err != nil {
@@ -235,6 +236,7 @@ func decodeStaticHost(req *pluginapi.Request) (*config.StaticHost, error) {
 	if err := json.Unmarshal(req.Data, &host); err != nil {
 		return nil, fmt.Errorf("invalid static host payload: %w", err)
 	}
+	host.MACAddress = config.NormalizeMAC(host.MACAddress)
 	if err := validateStaticHost(&host); err != nil {
 		return nil, err
 	}

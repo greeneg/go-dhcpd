@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 
@@ -453,7 +452,7 @@ func deleteStaticHost(db *sql.DB, macAddress string) error {
 // normalizeMAC lowercases a MAC address so lookups/storage aren't sensitive
 // to the case a caller happens to send it in.
 func normalizeMAC(mac string) string {
-	return strings.ToLower(mac)
+	return config.NormalizeMAC(mac)
 }
 
 func boolToInt(b bool) int {

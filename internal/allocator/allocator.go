@@ -82,6 +82,8 @@ func (a *Allocator) StaticHosts() []config.StaticHost {
 
 // AllocateIP allocates an IP address for a MAC address
 func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, error) {
+	macAddr = config.NormalizeMAC(macAddr)
+
 	// Check if there's a static assignment
 	staticIP := a.getStaticIP(macAddr)
 	if staticIP != nil {
@@ -129,12 +131,12 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 
 // getStaticIP checks if there's a static assignment for the MAC address
 func (a *Allocator) getStaticIP(macAddr string) net.IP {
-	macAddr = strings.ToLower(macAddr)
+	macAddr = config.NormalizeMAC(macAddr)
 	a.mu.RLock()
 	staticHosts := a.static
 	a.mu.RUnlock()
 	for _, static := range staticHosts {
-		if strings.ToLower(static.MACAddress) == macAddr {
+		if config.NormalizeMAC(static.MACAddress) == macAddr {
 			// Try to parse as IP first
 			ip := net.ParseIP(static.IPAddress)
 			if ip != nil {
@@ -153,6 +155,8 @@ func (a *Allocator) getStaticIP(macAddr string) net.IP {
 
 // isIPAvailable checks if an IP is available for allocation
 func (a *Allocator) isIPAvailable(ip net.IP, macAddr string) bool {
+	macAddr = config.NormalizeMAC(macAddr)
+
 	// Check if IP is in deny list
 	denied, err := a.db.IsDenyAddress(ip.String())
 	if err != nil || denied {
@@ -170,7 +174,7 @@ func (a *Allocator) isIPAvailable(ip net.IP, macAddr string) bool {
 	}
 
 	// If lease exists, check if it's for the same MAC or expired
-	if lease.MACAddress == macAddr {
+	if config.NormalizeMAC(lease.MACAddress) == macAddr {
 		return true
 	}
 
@@ -292,6 +296,7 @@ func (a *Allocator) getMACFromARP(ip net.IP) string {
 
 // CreateLease creates a new lease in the database
 func (a *Allocator) CreateLease(macAddr string, ip net.IP, hostname string, isStatic bool) error {
+	macAddr = config.NormalizeMAC(macAddr)
 	leaseTime := time.Duration(a.config.Global.LeaseTime) * time.Second
 	now := time.Now()
 
@@ -323,6 +328,7 @@ func (a *Allocator) CreateLease(macAddr string, ip net.IP, hostname string, isSt
 
 // ReleaseLease releases a lease
 func (a *Allocator) ReleaseLease(macAddr string) error {
+	macAddr = config.NormalizeMAC(macAddr)
 	lease, err := a.db.GetLeaseByMAC(macAddr)
 	if err != nil {
 		return err
@@ -350,7 +356,7 @@ func (a *Allocator) SeedStaticLease(host config.StaticHost) error {
 
 	now := time.Now()
 	lease := &db.Lease{
-		MACAddress: host.MACAddress,
+		MACAddress: config.NormalizeMAC(host.MACAddress),
 		IPAddress:  ip,
 		Hostname:   host.Hostname,
 		LeaseStart: now,
@@ -375,6 +381,7 @@ func (a *Allocator) SeedStaticLease(host config.StaticHost) error {
 // callers can use it unconditionally when a static host is deleted or
 // changes IP address to avoid leaving a stale, permanently-active row behind.
 func (a *Allocator) RevokeStaticLease(macAddr string) error {
+	macAddr = config.NormalizeMAC(macAddr)
 	lease, err := a.db.GetLeaseByMAC(macAddr)
 	if err != nil {
 		return err

@@ -72,6 +72,9 @@ func handleGetStaticHosts(req *pluginapi.Request) {
 		_ = pluginapi.WriteError(os.Stdout, err.Error())
 		return
 	}
+	for i := range cfg.Static {
+		cfg.Static[i].MACAddress = config.NormalizeMAC(cfg.Static[i].MACAddress)
+	}
 	_ = pluginapi.WriteSuccess(os.Stdout, cfg.Static)
 }
 

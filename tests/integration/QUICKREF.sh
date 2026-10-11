@@ -36,10 +36,10 @@ sudo tcpdump -i eth0 port 67 or port 68 -v  # Capture DHCP traffic
 # Check API endpoints
 export SERVER_API_USER="${SERVER_API_USER:-apitest}"
 # Set SERVER_API_PASSWORD to the password you used with setup-server.sh
+SERVER_API_URL="${SERVER_API_URL:-http://192.168.100.10:18467}"
 curl "${SERVER_API_URL}/health"
 curl -u "${SERVER_API_USER:-apitest}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/config"
 curl -u "${SERVER_API_USER:-apitest}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/leases"
-curl "${SERVER_API_URL}/metrics"
 
 # CLIENT VM COMMANDS
 # ------------------

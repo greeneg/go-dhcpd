@@ -73,3 +73,20 @@ func validateSubnet(s *config.SubnetConfig) error {
 
 	return nil
 }
+
+// validateStaticHost performs basic sanity checks before a static host is
+// persisted. ip_address intentionally isn't restricted to IPv4 literals
+// here: config.StaticHost documents it as "Can be IP or FQDN", and the
+// allocator resolves hostnames via DNS at allocation time.
+func validateStaticHost(h *config.StaticHost) error {
+	if h.MACAddress == "" {
+		return fmt.Errorf("static host mac_address is required")
+	}
+	if _, err := net.ParseMAC(h.MACAddress); err != nil {
+		return fmt.Errorf("invalid mac_address: %q", h.MACAddress)
+	}
+	if h.IPAddress == "" {
+		return fmt.Errorf("static host ip_address is required")
+	}
+	return nil
+}

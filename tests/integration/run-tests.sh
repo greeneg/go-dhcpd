@@ -9,11 +9,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SERVER_API_URL="${SERVER_API_URL:-http://192.168.100.10:18467}"
-SERVER_API_USER="${SERVER_API_USER:-dhcpd-test-admin}"
+SERVER_API_USER="${SERVER_API_USER:-apitest}"
 SERVER_API_PASSWORD="${SERVER_API_PASSWORD:-}"
 
-if [ -z "$SERVER_API_PASSWORD" ]; then
-    echo "Set SERVER_API_PASSWORD before running integration tests" >&2
+if [[ -z "$SERVER_API_PASSWORD" ]]; then
+    echo "Set SERVER_API_PASSWORD before running this script"
     exit 1
 fi
 
@@ -38,10 +38,6 @@ log_error() {
 
 log_test() {
     echo -e "${YELLOW}[TEST]${NC} $*"
-}
-
-auth_curl() {
-    curl -s -f -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" "$@"
 }
 
 # Test results
@@ -88,8 +84,8 @@ test_server_health() {
 test_server_api() {
     log_test "Testing server API endpoints..."
     
-    # Test /config
-    if auth_curl "${SERVER_API_URL}/config" | grep -q "subnets"; then
+    # Test /config (requires authentication)
+    if curl -s -f -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/config" | grep -q "subnets"; then
         test_result 0 "Server /config endpoint returns valid data"
     else
         test_result 1 "Server /config endpoint failed"
@@ -153,8 +149,8 @@ EOF
 test_lease_database() {
     log_test "Testing lease database..."
     
-    # Check if leases are recorded
-    if auth_curl "${SERVER_API_URL}/leases" | grep -q "ip_address"; then
+    # Check if leases are recorded (requires authentication)
+    if curl -s -f -u "${SERVER_API_USER}:${SERVER_API_PASSWORD}" "${SERVER_API_URL}/leases" | grep -q "ip_address"; then
         test_result 0 "Lease database contains entries"
     else
         test_result 1 "Lease database is empty or unreachable"

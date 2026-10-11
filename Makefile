@@ -34,6 +34,7 @@ build: deps
 	@mkdir -p $(BUILD_DIR) $(PLUGIN_BUILD_DIR)
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dhcpd
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
+	go build -o $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin ./cmd/plugins/sqlite3-config
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -47,6 +48,7 @@ install: build
 	install -D -m 0755 -d $(DATA_DIR)
 	install -D -m 0755 -d $(PLUGIN_DIR)
 	install -D -m 0755 $(PLUGIN_BUILD_DIR)/file-config.plugin $(PLUGIN_DIR)/file-config.plugin
+	install -D -m 0755 $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin $(PLUGIN_DIR)/sqlite3-config.plugin
 	@if [ -f /etc/pam.d/go-dhcpd ]; then \
 		echo "/etc/pam.d/go-dhcpd already exists, leaving it untouched"; \
 	elif [ -f /etc/pam.d/system-auth ]; then \
@@ -64,6 +66,7 @@ install: build
 uninstall:
 	rm -f $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
 	rm -rf $(PLUGIN_DIR)/file-config.plugin
+	rm -rf $(PLUGIN_DIR)/sqlite3-config.plugin
 	rm -f /etc/pam.d/go-dhcpd
 	@echo "Uninstall complete. Config and data directories preserved."
 
@@ -75,11 +78,13 @@ run: deps
 	@mkdir -p $(BUILD_DIR) $(PLUGIN_BUILD_DIR)
 	go build -ldflags "$(DEV_LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dhcpd
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
+	go build -o $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin ./cmd/plugins/sqlite3-config
 	sudo $(BUILD_DIR)/$(BINARY_NAME) -config config.example.json5 -stdout
 
 run-dev: deps
 	@mkdir -p $(PLUGIN_BUILD_DIR)
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
+	go build -o $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin ./cmd/plugins/sqlite3-config
 	go run -ldflags "$(DEV_LDFLAGS)" ./cmd/dhcpd -config config.example.json5 -stdout
 
 fmt:

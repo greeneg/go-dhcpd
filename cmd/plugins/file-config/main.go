@@ -16,7 +16,10 @@ import (
 	"github.com/greeneg/go-dhcpd/internal/pluginapi"
 )
 
-const pluginName = "file"
+// pluginName must match this plugin's installed binary name (without the
+// ".plugin" suffix), since config.LoadConfig derives the default plugin
+// path from plugins.config_provider.name when "path" is not set.
+const pluginName = "file-config"
 const pluginVersion = "1.0.0"
 
 func main() {

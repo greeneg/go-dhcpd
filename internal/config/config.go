@@ -139,10 +139,13 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	if config.Plugins.ConfigProvider.Name == "" {
-		config.Plugins.ConfigProvider.Name = "file"
+		config.Plugins.ConfigProvider.Name = "file-config"
 	}
 	if config.Plugins.ConfigProvider.Path == "" {
-		config.Plugins.ConfigProvider.Path = filepath.Join(DefaultPluginDir, "file-config.plugin")
+		// The plugin binary is expected to be named "<name>.plugin" in
+		// DefaultPluginDir; this must stay in sync with whatever "name" is
+		// set to (default or user-specified), not a fixed plugin's filename.
+		config.Plugins.ConfigProvider.Path = filepath.Join(DefaultPluginDir, config.Plugins.ConfigProvider.Name+".plugin")
 	}
 	if config.Plugins.ConfigProvider.Settings == nil {
 		config.Plugins.ConfigProvider.Settings = map[string]any{}

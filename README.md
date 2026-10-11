@@ -19,7 +19,8 @@ A modern DHCP and BootP daemon written in Golang with comprehensive RFC complian
   - Subnets and static leases are supplied by an external, independently
     executed config-provider plugin
   - Bundled `file-config` plugin reads them from `config.json5` (read-only)
-  - Future plugins can add write support (e.g. database-backed storage)
+  - Bundled `sqlite3-config` plugin stores subnets and static hosts in a
+    SQLite3 database with full CRUD support (`writable: true`)
   
 - **Address Management**
   - SQLite3 database for lease tracking
@@ -202,18 +203,17 @@ intentionally **read-only** — the `/subnets` and `/static` write endpoints
 in the API return `403 Forbidden` when it is the active plugin.
 
 The bundled `sqlite3-config` plugin (`cmd/plugins/sqlite3-config`) stores
-**subnet** definitions in a SQLite3 database and supports full CRUD through
-the `/subnets` API (`writable: true`). Static-lease storage isn't
-implemented yet: it reports an empty static-host list and rejects
-`/static` writes with an error, so it can already be used as the active
-`config_provider` while that support is added. Configure it with:
+both **subnet** and **static host** definitions in a SQLite3 database and
+supports full CRUD through the `/subnets` and `/static` APIs
+(`writable: true`). Static hosts are keyed by (case-insensitive) MAC
+address, stored in a dedicated `static_hosts` table. Configure it with:
 
 ```json5
 "plugins": {
   "config_provider": {
     "name": "sqlite3-config",
     "settings": {
-      "db_path": "/var/lib/go-dhcpd/subnets.db"
+      "db_path": "/var/lib/go-dhcpd/networks.db"
     }
   }
 }

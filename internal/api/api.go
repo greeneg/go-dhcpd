@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/greeneg/go-dhcpd/internal/dhcp"
 	"github.com/greeneg/go-dhcpd/internal/logger"
 	"github.com/greeneg/go-dhcpd/internal/plugin"
+	"github.com/greeneg/go-dhcpd/internal/pluginapi"
 	"github.com/greeneg/go-dhcpd/internal/version"
 )
 
@@ -314,6 +316,7 @@ func (a *API) addStaticHostHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	host.MACAddress = config.NormalizeMAC(host.MACAddress)
 	if err := a.plugins.AddStaticHost(host); err != nil {
 		a.writePluginError(c, err)
 		return
@@ -332,7 +335,7 @@ func (a *API) updateStaticHostHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	host.MACAddress = c.Param("mac")
+	host.MACAddress = config.NormalizeMAC(c.Param("mac"))
 	if err := a.plugins.UpdateStaticHost(host); err != nil {
 		a.writePluginError(c, err)
 		return
@@ -351,7 +354,7 @@ func (a *API) updateStaticHostHandler(c *gin.Context) {
 
 // deleteStaticHostHandler removes a static host via the config-provider plugin
 func (a *API) deleteStaticHostHandler(c *gin.Context) {
-	mac := c.Param("mac")
+	mac := config.NormalizeMAC(c.Param("mac"))
 	if err := a.plugins.DeleteStaticHost(mac); err != nil {
 		a.writePluginError(c, err)
 		return
@@ -365,9 +368,16 @@ func (a *API) deleteStaticHostHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "static host deleted", "mac_address": mac})
 }
 
-// writePluginError maps a plugin-reported error to an HTTP response, using
-// 403 Forbidden when the plugin rejected the request because it is read-only.
+// writePluginError maps a plugin-reported error to an HTTP response: 400 for
+// a plugin-flagged input validation failure, 403 when the plugin rejected
+// the request because it is read-only, and 500 for everything else (plugin
+// execution/storage failures).
 func (a *API) writePluginError(c *gin.Context, err error) {
+	var valErr *pluginapi.ValidationError
+	if errors.As(err, &valErr) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": valErr.Message})
+		return
+	}
 	if !a.plugins.Capabilities().Writable {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/yosuke-furukawa/json5/encoding/json5"
 )
@@ -101,6 +102,15 @@ type StaticHost struct {
 	MACAddress string `json:"mac_address"` // Format: aa:bb:cc:dd:ee:ff
 	IPAddress  string `json:"ip_address"`  // Can be IP or FQDN
 	Hostname   string `json:"hostname"`
+}
+
+// NormalizeMAC lowercases a MAC address. It is the single source of truth
+// for MAC case-folding, used wherever MAC addresses are stored or compared
+// (config-provider plugins, the allocator, the API, and the DHCP packet
+// handler), so a client/caller sending upper or mixed case never causes a
+// lookup or delete to miss an entry stored in a different case.
+func NormalizeMAC(mac string) string {
+	return strings.ToLower(mac)
 }
 
 // LoadConfig loads configuration from a JSON5 file

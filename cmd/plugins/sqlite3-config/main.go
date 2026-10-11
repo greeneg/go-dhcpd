@@ -1,8 +1,6 @@
 // Command sqlite3-config is a config-provider plugin that stores go-dhcpd
-// subnet definitions in a SQLite3 database instead of config.json5. Static
-// lease storage is not implemented yet: get_static_hosts reports an empty
-// list so the daemon can still start, and static-host write actions are
-// rejected until that support is added.
+// subnet and static-lease definitions in a SQLite3 database instead of
+// config.json5.
 package main
 
 import (
@@ -15,7 +13,7 @@ import (
 )
 
 const pluginName = "sqlite3-config"
-const pluginVersion = "0.1.0"
+const pluginVersion = "0.9.0"
 
 func main() {
 	req, err := pluginapi.ReadRequest(os.Stdin)
@@ -36,11 +34,13 @@ func main() {
 	case pluginapi.ActionDeleteSubnet:
 		handleDeleteSubnet(req)
 	case pluginapi.ActionGetStaticHosts:
-		// Not implemented yet; report none so the daemon (which requires
-		// both subnets and static hosts from the active plugin) can start.
-		_ = pluginapi.WriteSuccess(os.Stdout, []config.StaticHost{})
-	case pluginapi.ActionAddStaticHost, pluginapi.ActionUpdateStaticHost, pluginapi.ActionDeleteStaticHost:
-		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("the %q plugin does not support static host storage yet", pluginName))
+		handleGetStaticHosts(req)
+	case pluginapi.ActionAddStaticHost:
+		handleAddStaticHost(req)
+	case pluginapi.ActionUpdateStaticHost:
+		handleUpdateStaticHost(req)
+	case pluginapi.ActionDeleteStaticHost:
+		handleDeleteStaticHost(req)
 	default:
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("unknown action: %q", req.Action))
 	}
@@ -74,7 +74,7 @@ func handleGetSubnets(req *pluginapi.Request) {
 func handleAddSubnet(req *pluginapi.Request) {
 	subnet, err := decodeSubnet(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -95,7 +95,7 @@ func handleAddSubnet(req *pluginapi.Request) {
 func handleUpdateSubnet(req *pluginapi.Request) {
 	subnet, err := decodeSubnet(req)
 	if err != nil {
-		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
 		return
 	}
 
@@ -118,7 +118,7 @@ func handleDeleteSubnet(req *pluginapi.Request) {
 		Network string `json:"network"`
 	}
 	if err := json.Unmarshal(req.Data, &payload); err != nil || payload.Network == "" {
-		_ = pluginapi.WriteError(os.Stdout, "delete_subnet requires a non-empty \"network\" field")
+		_ = pluginapi.WriteValidationError(os.Stdout, "delete_subnet requires a non-empty \"network\" field")
 		return
 	}
 
@@ -146,4 +146,99 @@ func decodeSubnet(req *pluginapi.Request) (*config.SubnetConfig, error) {
 		return nil, err
 	}
 	return &subnet, nil
+}
+
+func handleGetStaticHosts(req *pluginapi.Request) {
+	db, err := openDB(req)
+	if err != nil {
+		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		return
+	}
+	defer db.Close()
+
+	hosts, err := getStaticHosts(db)
+	if err != nil {
+		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to read static hosts: %v", err))
+		return
+	}
+	_ = pluginapi.WriteSuccess(os.Stdout, hosts)
+}
+
+func handleAddStaticHost(req *pluginapi.Request) {
+	host, err := decodeStaticHost(req)
+	if err != nil {
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
+		return
+	}
+
+	db, err := openDB(req)
+	if err != nil {
+		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		return
+	}
+	defer db.Close()
+
+	if err := insertStaticHost(db, host); err != nil {
+		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to add static host: %v", err))
+		return
+	}
+	_ = pluginapi.WriteSuccess(os.Stdout, host)
+}
+
+func handleUpdateStaticHost(req *pluginapi.Request) {
+	host, err := decodeStaticHost(req)
+	if err != nil {
+		_ = pluginapi.WriteValidationError(os.Stdout, err.Error())
+		return
+	}
+
+	db, err := openDB(req)
+	if err != nil {
+		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		return
+	}
+	defer db.Close()
+
+	if err := updateStaticHost(db, host); err != nil {
+		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to update static host: %v", err))
+		return
+	}
+	_ = pluginapi.WriteSuccess(os.Stdout, host)
+}
+
+func handleDeleteStaticHost(req *pluginapi.Request) {
+	var payload struct {
+		MACAddress string `json:"mac_address"`
+	}
+	if err := json.Unmarshal(req.Data, &payload); err != nil || payload.MACAddress == "" {
+		_ = pluginapi.WriteValidationError(os.Stdout, "delete_static_host requires a non-empty \"mac_address\" field")
+		return
+	}
+	payload.MACAddress = config.NormalizeMAC(payload.MACAddress)
+
+	db, err := openDB(req)
+	if err != nil {
+		_ = pluginapi.WriteError(os.Stdout, err.Error())
+		return
+	}
+	defer db.Close()
+
+	if err := deleteStaticHost(db, payload.MACAddress); err != nil {
+		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to delete static host: %v", err))
+		return
+	}
+	_ = pluginapi.WriteSuccess(os.Stdout, map[string]string{"mac_address": payload.MACAddress})
+}
+
+// decodeStaticHost unmarshals and validates a StaticHost from the request payload.
+func decodeStaticHost(req *pluginapi.Request) (*config.StaticHost, error) {
+	var host config.StaticHost
+	if err := json.Unmarshal(req.Data, &host); err != nil {
+		return nil, fmt.Errorf("invalid static host payload: %w", err)
+	}
+	host.MACAddress = config.NormalizeMAC(host.MACAddress)
+	if err := validateStaticHost(&host); err != nil {
+		return nil, err
+	}
+	return &host, nil
 }

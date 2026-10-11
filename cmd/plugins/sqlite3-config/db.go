@@ -97,6 +97,15 @@ func ensureSchema(db *sql.DB) error {
 		end_address TEXT NOT NULL
 	);
 	CREATE INDEX IF NOT EXISTS idx_subnet_dynamic_ranges_subnet ON subnet_dynamic_ranges(subnet_id);
+
+	CREATE TABLE IF NOT EXISTS static_hosts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		mac_address TEXT NOT NULL UNIQUE,
+		ip_address TEXT NOT NULL,
+		hostname TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 	if _, err := db.Exec(schema); err != nil {
 		return err
@@ -360,6 +369,90 @@ func writeChildren(tx *sql.Tx, subnetID int64, subnet *config.SubnetConfig) erro
 	}
 
 	return nil
+}
+
+// getStaticHosts loads every static host row, ordered by MAC address.
+func getStaticHosts(db *sql.DB) ([]config.StaticHost, error) {
+	rows, err := db.Query(`SELECT mac_address, ip_address, hostname FROM static_hosts ORDER BY mac_address`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []config.StaticHost
+	for rows.Next() {
+		var h config.StaticHost
+		var hostname sql.NullString
+		if err := rows.Scan(&h.MACAddress, &h.IPAddress, &hostname); err != nil {
+			return nil, err
+		}
+		if hostname.Valid {
+			h.Hostname = hostname.String
+		}
+		hosts = append(hosts, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if hosts == nil {
+		hosts = []config.StaticHost{}
+	}
+	return hosts, nil
+}
+
+// insertStaticHost adds a new static host, keyed by (normalized) MAC address.
+func insertStaticHost(db *sql.DB, host *config.StaticHost) error {
+	_, err := db.Exec(
+		`INSERT INTO static_hosts (mac_address, ip_address, hostname) VALUES (?, ?, ?)`,
+		normalizeMAC(host.MACAddress), host.IPAddress, nullableString(host.Hostname),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert static host %q: %w", host.MACAddress, err)
+	}
+	return nil
+}
+
+// updateStaticHost replaces an existing static host's address/hostname,
+// looked up by MAC address (the API layer treats it as the immutable
+// identifier, the URL path parameter rather than renameable via update).
+func updateStaticHost(db *sql.DB, host *config.StaticHost) error {
+	result, err := db.Exec(
+		`UPDATE static_hosts SET ip_address = ?, hostname = ?, updated_at = CURRENT_TIMESTAMP WHERE mac_address = ?`,
+		host.IPAddress, nullableString(host.Hostname), normalizeMAC(host.MACAddress),
+	)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("no static host found for mac address %q", host.MACAddress)
+	}
+	return nil
+}
+
+// deleteStaticHost removes a static host by MAC address.
+func deleteStaticHost(db *sql.DB, macAddress string) error {
+	result, err := db.Exec(`DELETE FROM static_hosts WHERE mac_address = ?`, normalizeMAC(macAddress))
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("no static host found for mac address %q", macAddress)
+	}
+	return nil
+}
+
+// normalizeMAC lowercases a MAC address so lookups/storage aren't sensitive
+// to the case a caller happens to send it in.
+func normalizeMAC(mac string) string {
+	return config.NormalizeMAC(mac)
 }
 
 func boolToInt(b bool) int {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"strings"
 	"syscall"
 	"time"
 
@@ -631,9 +630,9 @@ func (s *Server) Close() error {
 
 // isStaticLease checks if a MAC address has a static assignment
 func (s *Server) isStaticLease(macAddr string) bool {
-	macAddr = toLowerMAC(macAddr)
+	macAddr = config.NormalizeMAC(macAddr)
 	for _, static := range s.allocator.StaticHosts() {
-		if toLowerMAC(static.MACAddress) == macAddr {
+		if config.NormalizeMAC(static.MACAddress) == macAddr {
 			return true
 		}
 	}
@@ -673,8 +672,4 @@ func getServerIP(listenAddr string) (net.IP, error) {
 	}
 
 	return nil, fmt.Errorf("no suitable IP address found")
-}
-
-func toLowerMAC(mac string) string {
-	return strings.ToLower(mac)
 }

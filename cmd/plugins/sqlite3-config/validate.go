@@ -73,3 +73,26 @@ func validateSubnet(s *config.SubnetConfig) error {
 
 	return nil
 }
+
+// validateStaticHost performs basic sanity checks before a static host is
+// persisted. ip_address intentionally isn't restricted to IPv4 literals
+// here: config.StaticHost documents it as "Can be IP or FQDN", and the
+// allocator resolves hostnames via DNS at allocation time.
+func validateStaticHost(h *config.StaticHost) error {
+	if h.MACAddress == "" {
+		return fmt.Errorf("static host mac_address is required")
+	}
+	// net.ParseMAC also accepts 8-byte (EUI-64) and 20-byte (InfiniBand)
+	// hardware addresses; reject those since this daemon only ever
+	// matches six-byte Ethernet client addresses (see StaticHost's doc
+	// comment), and canonicalize the accepted value's formatting.
+	hw, err := net.ParseMAC(h.MACAddress)
+	if err != nil || len(hw) != 6 {
+		return fmt.Errorf("invalid mac_address: %q (must be a 6-byte Ethernet address, e.g. aa:bb:cc:dd:ee:ff)", h.MACAddress)
+	}
+	h.MACAddress = hw.String()
+	if h.IPAddress == "" {
+		return fmt.Errorf("static host ip_address is required")
+	}
+	return nil
+}

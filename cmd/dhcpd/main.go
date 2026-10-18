@@ -18,14 +18,22 @@ import (
 )
 
 func main() {
-	// Parse command line flags
-	configFile := flag.String("config", "/etc/go-dhcpd/config.json5", "Path to configuration file")
-	useStdout := flag.Bool("stdout", false, "Log to stdout instead of syslog")
-	showVersion := flag.Bool("version", false, "Show version and exit")
-	showHelp := flag.Bool("help", false, "Show help and exit")
+	var configFile string
+	var useStdout, showVersion, showHelp bool
+
+	// GNU-style flags: both the long and short form of each option write
+	// to the same variable, so either spelling works on the command line.
+	flag.StringVar(&configFile, "config", "/etc/go-dhcpd/config.json5", "Path to configuration file")
+	flag.StringVar(&configFile, "c", "/etc/go-dhcpd/config.json5", "Shorthand for --config")
+	flag.BoolVar(&useStdout, "stdout", false, "Log to stdout instead of syslog")
+	flag.BoolVar(&useStdout, "o", false, "Shorthand for --stdout")
+	flag.BoolVar(&showVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&showVersion, "v", false, "Shorthand for --version")
+	flag.BoolVar(&showHelp, "help", false, "Show help and exit")
+	flag.BoolVar(&showHelp, "h", false, "Shorthand for --help")
 	flag.Parse()
 
-	if *showVersion {
+	if showVersion {
 		fmt.Printf("go-dhcpd version %s\n", version.Version)
 		fmt.Printf("Author: %s\n", version.Author)
 		fmt.Printf("Copyright: %s\n", version.Copyright)
@@ -35,13 +43,13 @@ func main() {
 		fmt.Printf("License: %s\n", version.License)
 		os.Exit(0)
 	}
-	if *showHelp {
+	if showHelp {
 		flag.Usage()
 		os.Exit(0)
 	}
 
 	// Initialize logger
-	if err := logger.InitLogger("go-dhcpd", *useStdout); err != nil {
+	if err := logger.InitLogger("go-dhcpd", useStdout); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
@@ -50,12 +58,12 @@ func main() {
 	logger.Info(fmt.Sprintf("Starting go-dhcpd version %s", version.Version))
 
 	// Load configuration
-	cfg, err := config.LoadConfig(*configFile)
+	cfg, err := config.LoadConfig(configFile)
 	if err != nil {
-		logger.Critical(fmt.Sprintf("Failed to load configuration from %s: %v", *configFile, err))
+		logger.Critical(fmt.Sprintf("Failed to load configuration from %s: %v", configFile, err))
 		os.Exit(1)
 	}
-	logger.Info(fmt.Sprintf("Configuration loaded from %s", *configFile))
+	logger.Info(fmt.Sprintf("Configuration loaded from %s", configFile))
 
 	// Initialize database
 	database, err := db.NewDatabase(cfg.Global.DatabasePath)

@@ -1,4 +1,8 @@
-package main
+// for go-dhcpd subnet and static-lease data. It is shared by the
+// sqlite3-config plugin (cmd/plugins/sqlite3-config) and the offline
+// sqlite3-migration-tool (cmd/sqlite3-migration-tool) so both always agree
+// on the same schema and validation rules.
+package sqlite3store
 
 import (
 	"database/sql"
@@ -7,7 +11,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"github.com/greeneg/go-dhcpd/internal/config"
-	"github.com/greeneg/go-dhcpd/internal/pluginapi"
 )
 
 // stringListBinding associates one of SubnetConfig's []string attributes
@@ -50,12 +53,11 @@ var stringListBindings = []stringListBinding{
 		func(s *config.SubnetConfig, v []string) { s.Routers = v }},
 }
 
-// openDB opens (creating if needed) the SQLite database named by the
-// request's "db_path" setting and ensures its schema exists.
-func openDB(req *pluginapi.Request) (*sql.DB, error) {
-	path, ok := req.Settings["db_path"].(string)
-	if !ok || path == "" {
-		return nil, fmt.Errorf("the %q plugin requires a non-empty \"db_path\" setting", pluginName)
+// OpenDB opens (creating if needed) the SQLite database at path and ensures
+// its schema exists.
+func OpenDB(path string) (*sql.DB, error) {
+	if path == "" {
+		return nil, fmt.Errorf("a non-empty database path is required")
 	}
 
 	db, err := sql.Open("sqlite3", path)
@@ -66,16 +68,17 @@ func openDB(req *pluginapi.Request) (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("failed to enable foreign key support: %w", err)
 	}
-	if err := ensureSchema(db); err != nil {
+	if err := EnsureSchema(db); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 	return db, nil
 }
 
-// ensureSchema creates the subnets table, its dynamic-range table, and one
-// table per string-list attribute, if they don't already exist.
-func ensureSchema(db *sql.DB) error {
+// EnsureSchema creates the subnets table, its dynamic-range table, the
+// static hosts table, and one table per string-list attribute, if they
+// don't already exist.
+func EnsureSchema(db *sql.DB) error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS subnets (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,9 +132,9 @@ func ensureSchema(db *sql.DB) error {
 	return nil
 }
 
-// getSubnets loads every subnet row along with its dynamic ranges and
+// GetSubnets loads every subnet row along with its dynamic ranges and
 // string-list attributes.
-func getSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
+func GetSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
 	rows, err := db.Query(`
 		SELECT id, network, netmask, enable_bootp, netbios_node_type, domain_name, interface_mtu
 		FROM subnets
@@ -249,8 +252,8 @@ func getStringList(db *sql.DB, table string, subnetID int64) ([]string, error) {
 	return values, nil
 }
 
-// insertSubnet adds a new subnet and all of its child rows in one transaction.
-func insertSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
+// InsertSubnet adds a new subnet and all of its child rows in one transaction.
+func InsertSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -279,10 +282,9 @@ func insertSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	return tx.Commit()
 }
 
-// updateSubnet replaces an existing subnet's fields and child rows. The
-// subnet is looked up by subnet.Network, which the API layer treats as the
-// immutable identifier (the URL path parameter, not renameable via update).
-func updateSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
+// UpdateSubnet replaces an existing subnet's fields and child rows, looked
+// up by subnet.Network (the immutable identifier).
+func UpdateSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -319,9 +321,9 @@ func updateSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	return tx.Commit()
 }
 
-// deleteSubnet removes a subnet by network address; its child rows are
+// DeleteSubnet removes a subnet by network address; its child rows are
 // removed automatically via ON DELETE CASCADE.
-func deleteSubnet(db *sql.DB, network string) error {
+func DeleteSubnet(db *sql.DB, network string) error {
 	result, err := db.Exec(`DELETE FROM subnets WHERE network = ?`, network)
 	if err != nil {
 		return err
@@ -371,8 +373,8 @@ func writeChildren(tx *sql.Tx, subnetID int64, subnet *config.SubnetConfig) erro
 	return nil
 }
 
-// getStaticHosts loads every static host row, ordered by MAC address.
-func getStaticHosts(db *sql.DB) ([]config.StaticHost, error) {
+// GetStaticHosts loads every static host row, ordered by MAC address.
+func GetStaticHosts(db *sql.DB) ([]config.StaticHost, error) {
 	rows, err := db.Query(`SELECT mac_address, ip_address, hostname FROM static_hosts ORDER BY mac_address`)
 	if err != nil {
 		return nil, err
@@ -400,8 +402,8 @@ func getStaticHosts(db *sql.DB) ([]config.StaticHost, error) {
 	return hosts, nil
 }
 
-// insertStaticHost adds a new static host, keyed by (normalized) MAC address.
-func insertStaticHost(db *sql.DB, host *config.StaticHost) error {
+// InsertStaticHost adds a new static host, keyed by (normalized) MAC address.
+func InsertStaticHost(db *sql.DB, host *config.StaticHost) error {
 	_, err := db.Exec(
 		`INSERT INTO static_hosts (mac_address, ip_address, hostname) VALUES (?, ?, ?)`,
 		normalizeMAC(host.MACAddress), host.IPAddress, nullableString(host.Hostname),
@@ -412,10 +414,9 @@ func insertStaticHost(db *sql.DB, host *config.StaticHost) error {
 	return nil
 }
 
-// updateStaticHost replaces an existing static host's address/hostname,
-// looked up by MAC address (the API layer treats it as the immutable
-// identifier, the URL path parameter rather than renameable via update).
-func updateStaticHost(db *sql.DB, host *config.StaticHost) error {
+// UpdateStaticHost replaces an existing static host's address/hostname,
+// looked up by MAC address (the immutable identifier).
+func UpdateStaticHost(db *sql.DB, host *config.StaticHost) error {
 	result, err := db.Exec(
 		`UPDATE static_hosts SET ip_address = ?, hostname = ?, updated_at = CURRENT_TIMESTAMP WHERE mac_address = ?`,
 		host.IPAddress, nullableString(host.Hostname), normalizeMAC(host.MACAddress),
@@ -433,8 +434,8 @@ func updateStaticHost(db *sql.DB, host *config.StaticHost) error {
 	return nil
 }
 
-// deleteStaticHost removes a static host by MAC address.
-func deleteStaticHost(db *sql.DB, macAddress string) error {
+// DeleteStaticHost removes a static host by MAC address.
+func DeleteStaticHost(db *sql.DB, macAddress string) error {
 	result, err := db.Exec(`DELETE FROM static_hosts WHERE mac_address = ?`, normalizeMAC(macAddress))
 	if err != nil {
 		return err

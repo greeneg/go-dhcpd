@@ -1,4 +1,4 @@
-package main
+package sqlite3store
 
 import (
 	"fmt"
@@ -11,7 +11,7 @@ import (
 // daemon's subnet matching (server.go's netmask handling) and DHCP option
 // encoding (packet.go) both convert addresses via net.IP.To4(), which
 // silently drops IPv6 values instead of erroring. Without this check a
-// plugin could persist a subnet that validates successfully here but is
+// caller could persist a subnet that validates successfully here but is
 // then silently unusable (or serves malformed options) at runtime.
 func isIPv4(s string) bool {
 	ip := net.ParseIP(s)
@@ -29,9 +29,9 @@ func validateIPv4List(label string, values []string) error {
 	return nil
 }
 
-// validateSubnet performs basic sanity checks before a subnet is persisted,
+// ValidateSubnet performs basic sanity checks before a subnet is persisted,
 // so obviously malformed data can't reach the database.
-func validateSubnet(s *config.SubnetConfig) error {
+func ValidateSubnet(s *config.SubnetConfig) error {
 	if s.Network == "" {
 		return fmt.Errorf("subnet network is required")
 	}
@@ -74,11 +74,11 @@ func validateSubnet(s *config.SubnetConfig) error {
 	return nil
 }
 
-// validateStaticHost performs basic sanity checks before a static host is
+// ValidateStaticHost performs basic sanity checks before a static host is
 // persisted. ip_address intentionally isn't restricted to IPv4 literals
 // here: config.StaticHost documents it as "Can be IP or FQDN", and the
 // allocator resolves hostnames via DNS at allocation time.
-func validateStaticHost(h *config.StaticHost) error {
+func ValidateStaticHost(h *config.StaticHost) error {
 	if h.MACAddress == "" {
 		return fmt.Errorf("static host mac_address is required")
 	}

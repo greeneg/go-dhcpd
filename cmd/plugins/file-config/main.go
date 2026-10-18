@@ -23,6 +23,8 @@ const pluginName = "file-config"
 const pluginVersion = "1.0.0"
 
 func main() {
+	pluginapi.WarnIfDirectlyExecuted(pluginName)
+
 	req, err := pluginapi.ReadRequest(os.Stdin)
 	if err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to read request: %v", err))

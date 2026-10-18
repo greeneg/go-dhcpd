@@ -4,18 +4,22 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/greeneg/go-dhcpd/internal/config"
 	"github.com/greeneg/go-dhcpd/internal/pluginapi"
+	"github.com/greeneg/go-dhcpd/internal/sqlite3store"
 )
 
 const pluginName = "sqlite3-config"
 const pluginVersion = "0.9.0"
 
 func main() {
+	pluginapi.WarnIfDirectlyExecuted(pluginName)
+
 	req, err := pluginapi.ReadRequest(os.Stdin)
 	if err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to read request: %v", err))
@@ -55,6 +59,16 @@ func handleCapabilities() {
 	_ = pluginapi.WriteSuccess(os.Stdout, caps)
 }
 
+// openDB resolves the request's "db_path" setting and opens (creating if
+// needed) that sqlite3 database via the shared sqlite3store package.
+func openDB(req *pluginapi.Request) (*sql.DB, error) {
+	path, ok := req.Settings["db_path"].(string)
+	if !ok || path == "" {
+		return nil, fmt.Errorf("the %q plugin requires a non-empty \"db_path\" setting", pluginName)
+	}
+	return sqlite3store.OpenDB(path)
+}
+
 func handleGetSubnets(req *pluginapi.Request) {
 	db, err := openDB(req)
 	if err != nil {
@@ -63,7 +77,7 @@ func handleGetSubnets(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	subnets, err := getSubnets(db)
+	subnets, err := sqlite3store.GetSubnets(db)
 	if err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to read subnets: %v", err))
 		return
@@ -85,7 +99,7 @@ func handleAddSubnet(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := insertSubnet(db, subnet); err != nil {
+	if err := sqlite3store.InsertSubnet(db, subnet); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to add subnet: %v", err))
 		return
 	}
@@ -106,7 +120,7 @@ func handleUpdateSubnet(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := updateSubnet(db, subnet); err != nil {
+	if err := sqlite3store.UpdateSubnet(db, subnet); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to update subnet: %v", err))
 		return
 	}
@@ -129,7 +143,7 @@ func handleDeleteSubnet(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := deleteSubnet(db, payload.Network); err != nil {
+	if err := sqlite3store.DeleteSubnet(db, payload.Network); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to delete subnet: %v", err))
 		return
 	}
@@ -142,7 +156,7 @@ func decodeSubnet(req *pluginapi.Request) (*config.SubnetConfig, error) {
 	if err := json.Unmarshal(req.Data, &subnet); err != nil {
 		return nil, fmt.Errorf("invalid subnet payload: %w", err)
 	}
-	if err := validateSubnet(&subnet); err != nil {
+	if err := sqlite3store.ValidateSubnet(&subnet); err != nil {
 		return nil, err
 	}
 	return &subnet, nil
@@ -156,7 +170,7 @@ func handleGetStaticHosts(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	hosts, err := getStaticHosts(db)
+	hosts, err := sqlite3store.GetStaticHosts(db)
 	if err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to read static hosts: %v", err))
 		return
@@ -178,7 +192,7 @@ func handleAddStaticHost(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := insertStaticHost(db, host); err != nil {
+	if err := sqlite3store.InsertStaticHost(db, host); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to add static host: %v", err))
 		return
 	}
@@ -199,7 +213,7 @@ func handleUpdateStaticHost(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := updateStaticHost(db, host); err != nil {
+	if err := sqlite3store.UpdateStaticHost(db, host); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to update static host: %v", err))
 		return
 	}
@@ -223,7 +237,7 @@ func handleDeleteStaticHost(req *pluginapi.Request) {
 	}
 	defer db.Close()
 
-	if err := deleteStaticHost(db, payload.MACAddress); err != nil {
+	if err := sqlite3store.DeleteStaticHost(db, payload.MACAddress); err != nil {
 		_ = pluginapi.WriteError(os.Stdout, fmt.Sprintf("failed to delete static host: %v", err))
 		return
 	}
@@ -237,7 +251,7 @@ func decodeStaticHost(req *pluginapi.Request) (*config.StaticHost, error) {
 		return nil, fmt.Errorf("invalid static host payload: %w", err)
 	}
 	host.MACAddress = config.NormalizeMAC(host.MACAddress)
-	if err := validateStaticHost(&host); err != nil {
+	if err := sqlite3store.ValidateStaticHost(&host); err != nil {
 		return nil, err
 	}
 	return &host, nil

@@ -1,11 +1,8 @@
 // Command sqlite3-migration-tool is an offline, one-shot utility that
-// migrates go-dhcpd subnet definitions from a JSON5 configuration file into
-// a sqlite3-config plugin database. It works directly against the SQLite
-// database file via internal/sqlite3store; it does not talk to the go-dhcpd
-// daemon, its API, or any plugin process.
-//
-// Static-lease migration is not yet implemented; only subnet definitions
-// are migrated by this tool.
+// migrates go-dhcpd subnet and static-lease definitions from a JSON5
+// configuration file into a sqlite3-config plugin database. It works
+// directly against the SQLite database file via internal/sqlite3store; it
+// does not talk to the go-dhcpd daemon, its API, or any plugin process.
 package main
 
 import (
@@ -58,9 +55,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: failed to load configuration from %q: %v\n", configPath, err)
 		os.Exit(1)
 	}
-	fmt.Printf("Loaded %d subnet(s) from %s\n", len(cfg.Subnets), configPath)
+	fmt.Printf("Loaded %d subnet(s) and %d static host(s) from %s\n", len(cfg.Subnets), len(cfg.Static), configPath)
 
-	if ok := migrateSubnets(cfg.Subnets, dbPath, dryRun); !ok {
+	subnetsOK := migrateSubnets(cfg.Subnets, dbPath, dryRun)
+	fmt.Println()
+	staticHostsOK := migrateStaticHosts(cfg.Static, dbPath, dryRun)
+	if !subnetsOK || !staticHostsOK {
 		os.Exit(1)
 	}
 }
@@ -113,14 +113,61 @@ func migrateSubnets(subnets []config.SubnetConfig, dbPath string, dryRun bool) b
 	return failed == 0
 }
 
+// migrateStaticHosts validates every static host in hosts and, unless
+// dryRun is set, writes each valid one into the sqlite3 database at dbPath
+// (creating the file and schema first). It reports progress for each host
+// and returns false if any host failed validation or insertion.
+func migrateStaticHosts(hosts []config.StaticHost, dbPath string, dryRun bool) bool {
+	if len(hosts) == 0 {
+		fmt.Println("No static hosts found in configuration; nothing to migrate.")
+		return true
+	}
+
+	insert := func(h *config.StaticHost) error { return nil }
+	if !dryRun {
+		sqliteDB, err := sqlite3store.OpenDB(dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: failed to open/create database %q: %v\n", dbPath, err)
+			return false
+		}
+		defer sqliteDB.Close()
+		insert = func(h *config.StaticHost) error { return sqlite3store.InsertStaticHost(sqliteDB, h) }
+	}
+
+	succeeded, failed := 0, 0
+	for i := range hosts {
+		host := hosts[i]
+		if err := sqlite3store.ValidateStaticHost(&host); err != nil {
+			fmt.Fprintf(os.Stderr, "  [INVALID] %s: %v\n", host.MACAddress, err)
+			failed++
+			continue
+		}
+		if dryRun {
+			fmt.Printf("  [OK]      %s -> %s (%s) would be migrated\n", host.MACAddress, host.IPAddress, host.Hostname)
+			succeeded++
+			continue
+		}
+		if err := insert(&host); err != nil {
+			fmt.Fprintf(os.Stderr, "  [FAILED]  %s: %v\n", host.MACAddress, err)
+			failed++
+			continue
+		}
+		fmt.Printf("  [MIGRATED] %s -> %s (%s)\n", host.MACAddress, host.IPAddress, host.Hostname)
+		succeeded++
+	}
+
+	fmt.Printf("\n%d of %d static host(s) migrated successfully (%d failed)\n", succeeded, len(hosts), failed)
+	return failed == 0
+}
+
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s --config FILE --database FILE [OPTIONS]
 
-Migrates subnet definitions from a go-dhcpd JSON5 configuration file into a
-sqlite3-config plugin database, creating the database file and schema if
-needed. Operates directly on the SQLite database file; the go-dhcpd daemon,
-its API, and the sqlite3-config plugin process are not involved and do not
-need to be running.
+Migrates subnet and static-lease definitions from a go-dhcpd JSON5
+configuration file into a sqlite3-config plugin database, creating the
+database file and schema if needed. Operates directly on the SQLite
+database file; the go-dhcpd daemon, its API, and the sqlite3-config plugin
+process are not involved and do not need to be running.
 
 Options:
   -c, --config FILE     Path to the go-dhcpd config.json5 file to read (required)
@@ -128,8 +175,5 @@ Options:
   -n, --dry-run         Validate the configuration without writing to the database
   -h, --help            Show this help message and exit
   -v, --version         Show version information and exit
-
-Note: static-lease migration is not yet implemented; only subnet
-definitions are migrated by this tool.
 `, toolName)
 }

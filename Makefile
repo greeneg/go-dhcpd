@@ -35,6 +35,7 @@ build: deps
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dhcpd
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
 	go build -o $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin ./cmd/plugins/sqlite3-config
+	go build -o $(BUILD_DIR)/sqlite3-migration-tool ./cmd/sqlite3-migration-tool
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -43,6 +44,7 @@ clean:
 install: build
 	@echo "Installing dhcpd..."
 	install -D -m 0755 $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
+	install -D -m 0755 $(BUILD_DIR)/sqlite3-migration-tool $(INSTALL_PREFIX)/bin/sqlite3-migration-tool
 	install -D -m 0755 -d $(CONFIG_DIR)
 	install -D -m 0644 config.example.json5 $(CONFIG_DIR)/config.json5.example
 	install -D -m 0755 -d $(DATA_DIR)
@@ -65,6 +67,7 @@ install: build
 
 uninstall:
 	rm -f $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
+	rm -f $(INSTALL_PREFIX)/bin/sqlite3-migration-tool
 	rm -rf $(PLUGIN_DIR)/file-config.plugin
 	rm -rf $(PLUGIN_DIR)/sqlite3-config.plugin
 	rm -f /etc/pam.d/go-dhcpd

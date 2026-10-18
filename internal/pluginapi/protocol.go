@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 )
 
 // ProtocolVersion is the current version of the plugin request/response protocol.
@@ -90,6 +91,19 @@ type Capabilities struct {
 	Name     string `json:"name"`
 	Version  string `json:"version"`
 	Writable bool   `json:"writable"`
+}
+
+// WarnIfDirectlyExecuted prints a Terraform-plugin-style warning and exits
+// if stdin is a terminal, i.e. this process was launched directly by a user
+// rather than spawned by the go-dhcpd daemon with a request piped to stdin.
+func WarnIfDirectlyExecuted(pluginName string) {
+	stat, err := os.Stdin.Stat()
+	if err == nil && stat.Mode()&os.ModeCharDevice != 0 {
+		fmt.Fprintf(os.Stderr, "This binary is a go-dhcpd plugin (%s).\n"+
+			"These are not meant to be executed directly.\n"+
+			"Please run go-dhcpd itself, which will invoke this plugin automatically.\n", pluginName)
+		os.Exit(1)
+	}
 }
 
 // ReadRequest decodes a single Request from r.

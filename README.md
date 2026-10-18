@@ -409,7 +409,9 @@ Two main tables:
 
 - Subnet Mask (1)
 - Router (3)
+- Time Server (4)
 - DNS Servers (6)
+- LPR Server (9)
 - Hostname (12)
 - Domain Name (15)
 - Interface MTU (26)
@@ -417,6 +419,7 @@ Two main tables:
 - NetBIOS Name Servers (44)
 - NetBIOS DD Server (45)
 - NetBIOS Node Type (46)
+- SMTP Server (69)
 - Domain Search (119)
 
 ## Development

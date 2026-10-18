@@ -144,7 +144,7 @@ the REST API's authenticated endpoints.
 .SH NETWORK API
 The daemon exposes a REST API, by default on TCP port 18467 (see
 .BR global.api_port ).
-.BR /health ", " /version ", and " /metrics
+.BR /health ", " /version ", " /metrics ", " /metrics/dhcp ", and " /metrics/database
 are always unauthenticated; every other endpoint requires HTTP Basic Auth
 verified against the host's local accounts via PAM, and can additionally
 be served over TLS by setting

@@ -15,3 +15,9 @@ The daemon and its documentation (README, `Docs/Design.md`, `dhcpd.8`) claim Boo
 - BootP must only ever serve statically pre-registered clients (RFC 951 §3); there's no static-only allocation path. `Allocator.AllocateIP()` (`internal/allocator/allocator.go`) falls back to the dynamic pool when no static entry matches, which is invalid for BootP once implemented.
 - `createOffer`/`createAck` (`internal/dhcp/server.go`) unconditionally set DHCP-only options (message type 53, lease time 51) that must not appear in a BootP reply; a BootP-specific reply builder is needed rather than reusing these as-is.
 - README's feature list, `Docs/Design.md`, and `dhcpd.8`'s NAME/DESCRIPTION all claim RFC-compliant BootP support; these should be corrected (or the above implemented) before advertising BootP support in a 2.x release.
+
+## DHCP Relay Agent (2.z beta feature)
+
+## DHCP for IPv6 (3.x feature)
+
+## Alternative Database Engine Support

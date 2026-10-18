@@ -1,6 +1,6 @@
 // for go-dhcpd subnet and static-lease data. It is shared by the
 // sqlite3-config plugin (cmd/plugins/sqlite3-config) and the offline
-// sqlite3-migration-tool (cmd/sqlite3-migration-tool) so both always agree
+// go-dhcpd-migration-tool (cmd/go-dhcpd-migration-tool) so both always agree
 // on the same schema and validation rules.
 package sqlite3store
 

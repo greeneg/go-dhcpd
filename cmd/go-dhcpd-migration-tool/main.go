@@ -1,4 +1,4 @@
-// Command sqlite3-migration-tool is an offline, one-shot utility that
+// Command go-dhcpd-migration-tool is an offline, one-shot utility that
 // migrates go-dhcpd subnet and static-lease definitions from a JSON5
 // configuration file into a sqlite3-config plugin database. It works
 // directly against the SQLite database file via internal/sqlite3store; it
@@ -15,7 +15,7 @@ import (
 	"github.com/greeneg/go-dhcpd/internal/version"
 )
 
-const toolName = "sqlite3-migration-tool"
+const toolName = "go-dhcpd-migration-tool"
 
 func main() {
 	var configPath, dbPath string

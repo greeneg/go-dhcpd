@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 )
 
 // DHCP Message Types
@@ -23,8 +24,10 @@ const (
 // DHCP Options
 const (
 	OptionSubnetMask           = 1
+	OptionTimeServer           = 4
 	OptionRouter               = 3
 	OptionDNS                  = 6
+	OptionLPRServer            = 9
 	OptionHostname             = 12
 	OptionDomainName           = 15
 	OptionInterfaceMTU         = 26
@@ -41,6 +44,7 @@ const (
 	OptionRenewalTime          = 58
 	OptionRebindingTime        = 59
 	OptionClientIdentifier     = 61
+	OptionSMTPServer           = 69
 	OptionDomainSearch         = 119
 	OptionEnd                  = 255
 )
@@ -56,21 +60,21 @@ var MagicCookie = []byte{99, 130, 83, 99}
 
 // Packet represents a DHCP/BootP packet
 type Packet struct {
-	OpCode    uint8    // 1 = BOOTREQUEST, 2 = BOOTREPLY
-	HwType    uint8    // Hardware address type (1 = Ethernet)
-	HwLen     uint8    // Hardware address length
-	Hops      uint8    // Client sets to 0
-	Xid       uint32   // Transaction ID
-	Secs      uint16   // Seconds elapsed
-	Flags     uint16   // Flags
-	CIAddr    net.IP   // Client IP address
-	YIAddr    net.IP   // Your IP address
-	SIAddr    net.IP   // Server IP address
-	GIAddr    net.IP   // Gateway IP address
-	CHAddr    net.HardwareAddr // Client hardware address
-	SName     [64]byte // Server host name
-	File      [128]byte // Boot file name
-	Options   map[byte][]byte // DHCP options
+	OpCode  uint8            // 1 = BOOTREQUEST, 2 = BOOTREPLY
+	HwType  uint8            // Hardware address type (1 = Ethernet)
+	HwLen   uint8            // Hardware address length
+	Hops    uint8            // Client sets to 0
+	Xid     uint32           // Transaction ID
+	Secs    uint16           // Seconds elapsed
+	Flags   uint16           // Flags
+	CIAddr  net.IP           // Client IP address
+	YIAddr  net.IP           // Your IP address
+	SIAddr  net.IP           // Server IP address
+	GIAddr  net.IP           // Gateway IP address
+	CHAddr  net.HardwareAddr // Client hardware address
+	SName   [64]byte         // Server host name
+	File    [128]byte        // Boot file name
+	Options map[byte][]byte  // DHCP options
 }
 
 // ParsePacket parses a DHCP packet from bytes
@@ -80,18 +84,18 @@ func ParsePacket(data []byte) (*Packet, error) {
 	}
 
 	p := &Packet{
-		OpCode: data[0],
-		HwType: data[1],
-		HwLen:  data[2],
-		Hops:   data[3],
-		Xid:    binary.BigEndian.Uint32(data[4:8]),
-		Secs:   binary.BigEndian.Uint16(data[8:10]),
-		Flags:  binary.BigEndian.Uint16(data[10:12]),
-		CIAddr: net.IP(data[12:16]),
-		YIAddr: net.IP(data[16:20]),
-		SIAddr: net.IP(data[20:24]),
-		GIAddr: net.IP(data[24:28]),
-		CHAddr: net.HardwareAddr(data[28:28+data[2]]),
+		OpCode:  data[0],
+		HwType:  data[1],
+		HwLen:   data[2],
+		Hops:    data[3],
+		Xid:     binary.BigEndian.Uint32(data[4:8]),
+		Secs:    binary.BigEndian.Uint16(data[8:10]),
+		Flags:   binary.BigEndian.Uint16(data[10:12]),
+		CIAddr:  net.IP(data[12:16]),
+		YIAddr:  net.IP(data[16:20]),
+		SIAddr:  net.IP(data[20:24]),
+		GIAddr:  net.IP(data[24:28]),
+		CHAddr:  net.HardwareAddr(data[28 : 28+data[2]]),
 		Options: make(map[byte][]byte),
 	}
 
@@ -136,7 +140,7 @@ func (p *Packet) parseOptions(data []byte) {
 // ToBytes converts the packet to bytes
 func (p *Packet) ToBytes() []byte {
 	buf := make([]byte, 236)
-	
+
 	buf[0] = p.OpCode
 	buf[1] = p.HwType
 	buf[2] = p.HwLen
@@ -144,7 +148,7 @@ func (p *Packet) ToBytes() []byte {
 	binary.BigEndian.PutUint32(buf[4:8], p.Xid)
 	binary.BigEndian.PutUint16(buf[8:10], p.Secs)
 	binary.BigEndian.PutUint16(buf[10:12], p.Flags)
-	
+
 	copy(buf[12:16], p.CIAddr.To4())
 	copy(buf[16:20], p.YIAddr.To4())
 	copy(buf[20:24], p.SIAddr.To4())
@@ -152,25 +156,25 @@ func (p *Packet) ToBytes() []byte {
 	copy(buf[28:44], p.CHAddr)
 	copy(buf[44:108], p.SName[:])
 	copy(buf[108:236], p.File[:])
-	
+
 	// Add magic cookie and options
 	buf = append(buf, MagicCookie...)
-	
+
 	// Add options
 	for opt, val := range p.Options {
 		buf = append(buf, opt)
 		buf = append(buf, byte(len(val)))
 		buf = append(buf, val...)
 	}
-	
+
 	// End option
 	buf = append(buf, OptionEnd)
-	
+
 	// Pad to minimum 300 bytes
 	for len(buf) < 300 {
 		buf = append(buf, 0)
 	}
-	
+
 	return buf
 }
 
@@ -243,6 +247,32 @@ func (p *Packet) SetDomainName(domain string) {
 	p.Options[OptionDomainName] = []byte(domain)
 }
 
+// SetDomainSearch sets the domain search list (RFC 3397). Each domain is
+// encoded as DNS wire-format labels terminated by a zero-length label; name
+// compression (RFC 1035 §4.1.4) is not applied, which RFC 3397 permits.
+func (p *Packet) SetDomainSearch(domains []string) {
+	var buf []byte
+	for _, d := range domains {
+		buf = append(buf, encodeDomainName(d)...)
+	}
+	p.Options[OptionDomainSearch] = buf
+}
+
+// encodeDomainName encodes a dotted domain name as DNS wire-format labels
+// (one length-prefixed label per segment) followed by a zero-length label.
+func encodeDomainName(name string) []byte {
+	var buf bytes.Buffer
+	for _, label := range strings.Split(strings.TrimSuffix(name, "."), ".") {
+		if label == "" {
+			continue
+		}
+		buf.WriteByte(byte(len(label)))
+		buf.WriteString(label)
+	}
+	buf.WriteByte(0)
+	return buf.Bytes()
+}
+
 // SetNTPServers sets NTP servers
 func (p *Packet) SetNTPServers(servers []net.IP) {
 	var buf []byte
@@ -250,6 +280,33 @@ func (p *Packet) SetNTPServers(servers []net.IP) {
 		buf = append(buf, s.To4()...)
 	}
 	p.Options[OptionNTPServers] = buf
+}
+
+// SetTimeServers sets RFC 868 Time Protocol servers
+func (p *Packet) SetTimeServers(servers []net.IP) {
+	var buf []byte
+	for _, s := range servers {
+		buf = append(buf, s.To4()...)
+	}
+	p.Options[OptionTimeServer] = buf
+}
+
+// SetSMTPServers sets SMTP servers
+func (p *Packet) SetSMTPServers(servers []net.IP) {
+	var buf []byte
+	for _, s := range servers {
+		buf = append(buf, s.To4()...)
+	}
+	p.Options[OptionSMTPServer] = buf
+}
+
+// SetLPRServers sets LPR servers
+func (p *Packet) SetLPRServers(servers []net.IP) {
+	var buf []byte
+	for _, s := range servers {
+		buf = append(buf, s.To4()...)
+	}
+	p.Options[OptionLPRServer] = buf
 }
 
 // SetNetBIOSNameServers sets NetBIOS name servers

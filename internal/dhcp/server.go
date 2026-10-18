@@ -479,10 +479,33 @@ func (s *Server) addSubnetOptions(packet *Packet, subnet *config.SubnetConfig) {
 		packet.SetDomainName(subnet.DomainName)
 	}
 
+	// Domain search list
+	if len(subnet.DomainSearch) > 0 {
+		packet.SetDomainSearch(subnet.DomainSearch)
+	}
+
 	// NTP servers
 	if len(subnet.NTPServers) > 0 {
 		ntp := parseIPs(subnet.NTPServers)
 		packet.SetNTPServers(ntp)
+	}
+
+	// Time servers (RFC 868)
+	if len(subnet.TimeServers) > 0 {
+		timeServers := parseIPs(subnet.TimeServers)
+		packet.SetTimeServers(timeServers)
+	}
+
+	// SMTP servers
+	if len(subnet.SMTPServers) > 0 {
+		smtp := parseIPs(subnet.SMTPServers)
+		packet.SetSMTPServers(smtp)
+	}
+
+	// LPR servers
+	if len(subnet.LPRServers) > 0 {
+		lpr := parseIPs(subnet.LPRServers)
+		packet.SetLPRServers(lpr)
 	}
 
 	// NetBIOS name servers

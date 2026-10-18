@@ -280,6 +280,8 @@ Remove a static host identified by MAC address. Requires a writable plugin.
 
 **Note:** The bundled `file-config` plugin (which reads subnets/static hosts from `config.json5`) is read-only; all of the write endpoints above return `403 Forbidden` when it is the active config-provider. The bundled `sqlite3-config` plugin supports all of the above (static hosts are keyed by MAC address, stored in its SQLite3 database).
 
+To move existing `subnets`/`static` data from `config.json5` into a `sqlite3-config` database before switching plugins, use the offline `go-dhcpd-migration-tool` (see the main [README](README.md#offline-migration-tool)).
+
 ---
 
 ### Leases

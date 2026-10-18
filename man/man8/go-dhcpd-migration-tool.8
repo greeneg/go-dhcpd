@@ -1,0 +1,153 @@
+.TH GO-DHCPD-MIGRATION-TOOL 8 "October 2026" "go-dhcpd 1.8.0" "System Administration Commands"
+.SH NAME
+go-dhcpd-migration-tool \- migrate go-dhcpd subnets and static hosts from config.json5 into a sqlite3-config database
+.SH SYNOPSIS
+.B go-dhcpd-migration-tool
+.RB \-c | \-\-config
+.I file
+.RB \-d | \-\-database
+.I file
+.RB [ \-n | \-\-dry\-run ]
+.br
+.B go-dhcpd-migration-tool
+.RB { \-h | \-\-help }
+.br
+.B go-dhcpd-migration-tool
+.RB { \-v | \-\-version }
+.SH DESCRIPTION
+.B go-dhcpd-migration-tool
+is an offline, one-shot utility that migrates the
+.B subnets
+and
+.B static
+arrays from a go-dhcpd JSON5 configuration file into a
+.BR sqlite3-config (8)
+plugin database, creating the database file and schema if needed.
+.PP
+It operates directly on the SQLite database file through the same storage
+and validation code used by the
+.B sqlite3-config
+plugin; the go-dhcpd daemon, its REST API, and the plugin process itself
+are not involved and do not need to be running. This makes the tool
+suitable for preparing a database ahead of switching an existing
+deployment's
+.B plugins.config_provider.name
+from
+.B file-config
+to
+.B sqlite3-config
+without downtime.
+.PP
+Subnets and static hosts are each validated and migrated independently:
+a validation or insertion failure in one record is reported and skipped,
+it does not abort migration of the remaining records in either set.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fIfile\fR
+Path to the go-dhcpd
+.B config.json5
+file to read. Required.
+.TP
+.BR \-d ", " \-\-database " " \fIfile\fR
+Path to the sqlite3 database file to create or update. Required. If the
+file does not already exist it is created, along with its schema.
+.TP
+.BR \-n ", " \-\-dry\-run
+Validate the configuration's subnets and static hosts without opening or
+writing to the database. Reports what would be migrated.
+.TP
+.BR \-h ", " \-\-help
+Print a usage summary, then exit.
+.TP
+.BR \-v ", " \-\-version
+Print the tool name and go-dhcpd version, then exit.
+.SH OUTPUT
+For each subnet and static host, the tool prints one of the following
+progress lines to standard output:
+.TP
+.B [OK]
+.RI ( \-\-dry\-run " only) the record passed validation and would be migrated."
+.TP
+.B [MIGRATED]
+The record passed validation and was written to the database.
+.TP
+.B [INVALID]
+The record failed validation (printed to standard error) and was not
+migrated.
+.TP
+.B [FAILED]
+The record passed validation but could not be inserted into the database
+(printed to standard error), e.g. due to a duplicate key or database
+error.
+.PP
+A summary line reporting the number of succeeded and failed records is
+printed after each of the subnet and static-host migration passes.
+.SH EXIT STATUS
+.TP
+.B 0
+Every subnet and static host was successfully validated (and, unless
+.BR \-\-dry\-run " was given, migrated)."
+.TP
+.B 1
+Configuration loading failed, the database could not be opened or
+created, or one or more subnets or static hosts failed validation or
+insertion.
+.TP
+.B 2
+Required arguments were missing:
+.B \-\-config
+and/or
+.B \-\-database
+were not given.
+.SH FILES
+.TP
+.I config.json5
+Source configuration file, named by
+.BR \-\-config .
+Only its
+.B subnets
+and
+.B static
+arrays are read; all other sections (global, auth, plugins) are ignored.
+.TP
+.IR database " (named by " \-\-database )
+Destination SQLite3 database, created with the same schema used by the
+.B sqlite3-config
+plugin. See
+.BR go\-dhcpd\-sqlite3\-config (3).
+.SH EXAMPLES
+Validate a configuration without writing anything:
+.PP
+.RS
+go-dhcpd-migration-tool \-\-config /etc/go-dhcpd/config.json5 \e
+  \-\-database /var/lib/go-dhcpd/networks.db \-\-dry\-run
+.RE
+.PP
+Migrate subnets and static hosts into a new or existing database:
+.PP
+.RS
+go-dhcpd-migration-tool \-c /etc/go-dhcpd/config.json5 \e
+  \-d /var/lib/go-dhcpd/networks.db
+.RE
+.PP
+After migrating, point
+.B plugins.config_provider
+at
+.B sqlite3-config
+with
+.B db_path
+set to the migrated database, then restart
+.BR dhcpd (8).
+.SH SEE ALSO
+.BR dhcpd (8),
+.BR go\-dhcpd\-sqlite3\-config (3),
+.BR go\-dhcpd\-file\-config (3),
+.BR go\-dhcpd\-config.json5 (5)
+.SH AUTHOR
+Gary L. Greene, Jr.
+.SH COPYRIGHT
+Copyright \(co 2026 YggdrasilSoft, LLC. Licensed under the Apache License,
+Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+.SH BUGS
+Report issues at
+.IR https://github.com/greeneg/go-dhcpd/issues .

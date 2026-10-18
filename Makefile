@@ -7,6 +7,7 @@ INSTALL_PREFIX=/usr/local
 CONFIG_DIR=/etc/go-dhcpd
 DATA_DIR=/var/lib/go-dhcpd
 PLUGIN_DIR=$(INSTALL_PREFIX)/lib/go-dhcpd/plugins
+MAN_DIR=$(INSTALL_PREFIX)/share/man
 LDFLAGS=-X 'github.com/greeneg/go-dhcpd/internal/config.DefaultPluginDir=$(PLUGIN_DIR)'
 # Used by run/run-dev so a local test build finds plugins under build/plugins
 # instead of the install-prefix path baked in by LDFLAGS.
@@ -16,7 +17,7 @@ help:
 	@echo "Available targets:"
 	@echo "  build       - Build the dhcpd binary and bundled plugins"
 	@echo "  clean       - Remove build artifacts"
-	@echo "  install     - Install dhcpd, plugins, configuration and PAM service (requires root)"
+	@echo "  install     - Install dhcpd, plugins, man page, configuration and PAM service (requires root)"
 	@echo "  uninstall   - Uninstall dhcpd (requires root)"
 	@echo "  test        - Run tests"
 	@echo "  run         - Build and run dhcpd with example config"
@@ -35,7 +36,7 @@ build: deps
 	go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/dhcpd
 	go build -o $(PLUGIN_BUILD_DIR)/file-config.plugin ./cmd/plugins/file-config
 	go build -o $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin ./cmd/plugins/sqlite3-config
-	go build -o $(BUILD_DIR)/sqlite3-migration-tool ./cmd/sqlite3-migration-tool
+	go build -o $(BUILD_DIR)/go-dhcpd-migration-tool ./cmd/go-dhcpd-migration-tool
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -44,13 +45,18 @@ clean:
 install: build
 	@echo "Installing dhcpd..."
 	install -D -m 0755 $(BUILD_DIR)/$(BINARY_NAME) $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
-	install -D -m 0755 $(BUILD_DIR)/sqlite3-migration-tool $(INSTALL_PREFIX)/bin/sqlite3-migration-tool
+	install -D -m 0755 $(BUILD_DIR)/go-dhcpd-migration-tool $(INSTALL_PREFIX)/bin/go-dhcpd-migration-tool
 	install -D -m 0755 -d $(CONFIG_DIR)
 	install -D -m 0644 config.example.json5 $(CONFIG_DIR)/config.json5.example
 	install -D -m 0755 -d $(DATA_DIR)
 	install -D -m 0755 -d $(PLUGIN_DIR)
 	install -D -m 0755 $(PLUGIN_BUILD_DIR)/file-config.plugin $(PLUGIN_DIR)/file-config.plugin
 	install -D -m 0755 $(PLUGIN_BUILD_DIR)/sqlite3-config.plugin $(PLUGIN_DIR)/sqlite3-config.plugin
+	install -D -m 0644 man/man8/dhcpd.8 $(MAN_DIR)/man8/dhcpd.8
+	install -D -m 0644 man/man8/go-dhcpd-migration-tool.8 $(MAN_DIR)/man8/go-dhcpd-migration-tool.8
+	install -D -m 0644 man/man5/go-dhcpd-config.json5.5 $(MAN_DIR)/man5/go-dhcpd-config.json5.5
+	install -D -m 0644 man/man3/go-dhcpd-file-config.3 $(MAN_DIR)/man3/go-dhcpd-file-config.3
+	install -D -m 0644 man/man3/go-dhcpd-sqlite3-config.3 $(MAN_DIR)/man3/go-dhcpd-sqlite3-config.3
 	@if [ -f /etc/pam.d/go-dhcpd ]; then \
 		echo "/etc/pam.d/go-dhcpd already exists, leaving it untouched"; \
 	elif [ -f /etc/pam.d/system-auth ]; then \
@@ -67,9 +73,14 @@ install: build
 
 uninstall:
 	rm -f $(INSTALL_PREFIX)/bin/$(BINARY_NAME)
-	rm -f $(INSTALL_PREFIX)/bin/sqlite3-migration-tool
+	rm -f $(INSTALL_PREFIX)/bin/go-dhcpd-migration-tool
 	rm -rf $(PLUGIN_DIR)/file-config.plugin
 	rm -rf $(PLUGIN_DIR)/sqlite3-config.plugin
+	rm -f $(MAN_DIR)/man8/dhcpd.8
+	rm -f $(MAN_DIR)/man8/go-dhcpd-migration-tool.8
+	rm -f $(MAN_DIR)/man5/go-dhcpd-config.json5.5
+	rm -f $(MAN_DIR)/man3/go-dhcpd-file-config.3
+	rm -f $(MAN_DIR)/man3/go-dhcpd-sqlite3-config.3
 	rm -f /etc/pam.d/go-dhcpd
 	@echo "Uninstall complete. Config and data directories preserved."
 

@@ -66,7 +66,10 @@ make build
 sudo make install
 ```
 
-The binary will be installed to `/usr/local/bin/dhcpd`.
+The binary will be installed to `/usr/local/bin/dhcpd`, with man pages for
+the daemon (`man dhcpd`), the migration tool (`man go-dhcpd-migration-tool`),
+the configuration file format (`man go-dhcpd-config.json5`), and the
+bundled plugins (`man 3 go-dhcpd-file-config`, `man 3 go-dhcpd-sqlite3-config`).
 
 ## API Authentication
 
@@ -168,7 +171,8 @@ Create a configuration file at `/etc/go-dhcpd/config.json5`:
 }
 ```
 
-See `config.example.json5` for a complete configuration example.
+See `config.example.json5` for a complete configuration example, or
+`man go-dhcpd-config.json5` for the full option reference.
 
 ## Plugin Architecture
 
@@ -200,7 +204,8 @@ The bundled `file-config` plugin (`cmd/plugins/file-config`) reproduces today's
 behavior: it reads the `subnets` and `static` arrays from `config.json5`
 (or another file specified via the `config_path` setting). It is
 intentionally **read-only** — the `/subnets` and `/static` write endpoints
-in the API return `403 Forbidden` when it is the active plugin.
+in the API return `403 Forbidden` when it is the active plugin. See
+`man 3 go-dhcpd-file-config` for the full plugin interface.
 
 The bundled `sqlite3-config` plugin (`cmd/plugins/sqlite3-config`) stores
 both **subnet** and **static host** definitions in a SQLite3 database and
@@ -223,7 +228,48 @@ Each of `SubnetConfig`'s array-valued fields (`dynamic_ranges` and the
 various `[]string` server-list fields such as `domain_name_servers`,
 `ntp_servers`, `routers`, etc.) is normalized into its own child table
 keyed by `subnet_id`, since SQLite has no native array column type; see
-`cmd/plugins/sqlite3-config/db.go` for the schema.
+`cmd/plugins/sqlite3-config/db.go` for the schema, or `man 3 go-dhcpd-sqlite3-config`
+for the full plugin interface.
+
+### Offline Migration Tool
+
+`go-dhcpd-migration-tool` (`cmd/go-dhcpd-migration-tool`) is a standalone,
+offline utility that migrates the `subnets` and `static` arrays from a
+`config.json5` file into a `sqlite3-config` plugin database, for switching
+an existing deployment from the `file-config` plugin to `sqlite3-config`.
+It writes directly to the SQLite database file via `internal/sqlite3store`
+(the same schema and validation code the `sqlite3-config` plugin uses); the
+go-dhcpd daemon, its API, and the plugin process are not involved and don't
+need to be running.
+
+```bash
+# Build it (included in `make build`)
+make build
+
+# Validate the configuration without writing anything
+./build/go-dhcpd-migration-tool --config config.json5 --database /var/lib/go-dhcpd/networks.db --dry-run
+
+# Migrate subnets and static hosts, creating the database/schema if needed
+./build/go-dhcpd-migration-tool --config config.json5 --database /var/lib/go-dhcpd/networks.db
+```
+
+Flags (GNU-style; each has a short and long form):
+
+- `-c, --config FILE` - Path to the `config.json5` file to read (required)
+- `-d, --database FILE` - Path to the sqlite3 database file to create/update (required)
+- `-n, --dry-run` - Validate the configuration without writing to the database
+- `-h, --help` - Show help and exit
+- `-v, --version` - Show version information and exit
+
+Subnets and static hosts are each validated and migrated independently; a
+failure in one does not stop the other, and the tool exits non-zero if any
+record failed validation or insertion. After migrating, point
+`plugins.config_provider` at `sqlite3-config` with `db_path` set to the
+database you migrated into.
+
+See `man go-dhcpd-migration-tool` (installed to
+`/usr/local/share/man/man8/go-dhcpd-migration-tool.8` by `make install`)
+for the full reference.
 
 ### Network Interface Binding
 
@@ -341,11 +387,15 @@ curl https://localhost:18467/deny
 ### Components
 
 - **cmd/dhcpd** - Main daemon binary
+- **cmd/plugins/file-config**, **cmd/plugins/sqlite3-config** - Bundled config-provider plugins
+- **cmd/go-dhcpd-migration-tool** - Offline `config.json5` -> `sqlite3-config` database migration tool
 - **internal/config** - Configuration loading and management
 - **internal/db** - SQLite3 database layer for lease storage
 - **internal/dhcp** - DHCP protocol implementation
 - **internal/allocator** - IP address allocation logic with ping checks
 - **internal/api** - Gin-based REST API server
+- **internal/pluginapi** - Daemon <-> plugin stdin/stdout JSON protocol
+- **internal/sqlite3store** - Shared schema/validation used by sqlite3-config and go-dhcpd-migration-tool
 - **internal/logger** - Syslog integration
 
 ### Database Schema
@@ -376,13 +426,19 @@ Two main tables:
 ```
 go-dhcpd/
 ├── cmd/
-│   └── dhcpd/           # Main binary
+│   ├── dhcpd/                  # Main daemon binary
+│   ├── plugins/
+│   │   ├── file-config/        # Bundled read-only config-provider plugin
+│   │   └── sqlite3-config/     # Bundled SQLite3-backed config-provider plugin
+│   └── go-dhcpd-migration-tool/ # Offline JSON5 -> sqlite3-config migration tool
 ├── internal/
 │   ├── allocator/       # IP allocation logic
 │   ├── api/             # REST API
 │   ├── config/          # Configuration
 │   ├── db/              # Database layer
 │   ├── dhcp/            # DHCP protocol
+│   ├── pluginapi/       # Daemon <-> plugin stdin/stdout protocol
+│   ├── sqlite3store/    # Shared sqlite3-config / migration-tool storage layer
 │   └── logger/          # Logging
 ├── Docs/                # Documentation
 ├── config.example.json5 # Example config

@@ -1,0 +1,167 @@
+.TH DHCPD 8 "October 2026" "go-dhcpd 1.8.0" "System Administration Commands"
+.SH NAME
+dhcpd \- go-dhcpd DHCP and BootP server daemon
+.SH SYNOPSIS
+.B dhcpd
+.RB [ \-c | \-\-config
+.IR file ]
+.RB [ \-o | \-\-stdout ]
+.RB [ \-h | \-\-help ]
+.RB [ \-v | \-\-version ]
+.SH DESCRIPTION
+.B dhcpd
+is the go-dhcpd daemon, a DHCP and BootP server implementing RFC 2131,
+RFC 2132, and related option-format RFCs. It allocates dynamic and static
+IPv4 leases, tracks them in a local SQLite3 database, and exposes a REST
+API for monitoring and administration.
+.PP
+The daemon binds a raw AF_PACKET socket to receive broadcast DHCP traffic
+from clients that do not yet have an IP address (source 0.0.0.0), in
+addition to a conventional UDP socket on port 67 for unicast and
+relay-agent traffic. Because raw sockets and binding to port 67 both
+require elevated privileges,
+.B dhcpd
+must be run as root, or with the
+.B CAP_NET_RAW
+and
+.B CAP_NET_BIND_SERVICE
+capabilities.
+.PP
+Subnet and static-lease definitions are not read directly by the daemon.
+Instead they are supplied by an external "config-provider" plugin,
+configured via the
+.B plugins.config_provider
+section of the configuration file and invoked by the daemon as a
+subprocess for each request (see
+.BR go\-dhcpd\-config.json5 (5)
+and the
+.B PLUGINS
+section below).
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " " \fIfile\fR
+Path to the JSON5 configuration file to load. Defaults to
+.IR /etc/go-dhcpd/config.json5 .
+.TP
+.BR \-o ", " \-\-stdout
+Write log output to standard output instead of syslog. Intended for
+development and debugging; production deployments should rely on the
+default syslog logging.
+.TP
+.BR \-v ", " \-\-version
+Print version, author, copyright, and license information, then exit.
+.TP
+.BR \-h ", " \-\-help
+Print a usage summary, then exit.
+.SH PLUGINS
+.B dhcpd
+loads exactly one config-provider plugin at startup, named by
+.BR plugins.config_provider.name " in the configuration file. Two plugins"
+are bundled:
+.TP
+.B file-config
+Reads the
+.B subnets
+and
+.B static
+arrays from the daemon's own configuration file (or another file named by
+the plugin's
+.B config_path
+setting). This plugin is read-only: API requests that would modify
+subnets or static hosts are rejected with
+.B 403 Forbidden
+while it is active. See
+.BR go\-dhcpd\-file\-config (3)
+for the plugin's full interface.
+.TP
+.B sqlite3-config
+Stores subnets and static hosts in a SQLite3 database named by the
+plugin's
+.B db_path
+setting, and supports full create/read/update/delete access through the
+REST API. See
+.BR go\-dhcpd\-sqlite3\-config (3)
+for the plugin's full interface.
+.PP
+Existing
+.B subnets
+and
+.B static
+data can be moved from a configuration file into a
+.B sqlite3-config
+database with
+.BR go\-dhcpd\-migration\-tool (8)
+before switching
+.B plugins.config_provider.name
+from
+.B file-config
+to
+.BR sqlite3-config .
+.SH SIGNALS
+.TP
+.B SIGINT, SIGTERM
+Initiate a graceful shutdown: the DHCP listeners are closed and the
+process exits. The lease database is not altered on shutdown.
+.SH EXIT STATUS
+.TP
+.B 0
+The daemon exited normally, either via
+.B \-\-help
+or
+.BR \-\-version ,
+or by receiving a shutdown signal after running successfully.
+.TP
+.B 1
+Startup failed: the configuration could not be loaded, the lease database
+could not be opened, the config-provider plugin could not be loaded, or
+the DHCP server could not be created.
+.SH FILES
+.TP
+.I /etc/go-dhcpd/config.json5
+Default configuration file (see
+.BR \-\-config ).
+.TP
+.I /etc/go-dhcpd/config.json5.example
+Annotated example configuration, installed alongside the real
+configuration file by
+.BR "make install" .
+.TP
+.I /var/lib/go-dhcpd/dhcpd.db
+Default lease-tracking SQLite3 database, named by
+.B global.database_path
+in the configuration file.
+.TP
+.I /usr/local/lib/go-dhcpd/plugins/
+Default directory searched for config-provider plugin binaries when
+.B plugins.config_provider.path
+is not set in the configuration file. The actual prefix is whatever
+.B INSTALL_PREFIX
+was used at build/install time.
+.TP
+.I /etc/pam.d/go-dhcpd
+PAM service used to authenticate HTTP Basic Auth credentials presented to
+the REST API's authenticated endpoints.
+.SH NETWORK API
+The daemon exposes a REST API, by default on TCP port 18467 (see
+.BR global.api_port ).
+.BR /health ", " /version ", and " /metrics
+are always unauthenticated; every other endpoint requires HTTP Basic Auth
+verified against the host's local accounts via PAM, and can additionally
+be served over TLS by setting
+.B global.tls.enabled
+in the configuration file. See
+.I Docs/API.md
+in the go-dhcpd source distribution for the full endpoint reference.
+.SH SEE ALSO
+.BR go\-dhcpd\-config.json5 (5),
+.BR go\-dhcpd\-migration\-tool (8),
+.BR go\-dhcpd\-file\-config (3),
+.BR go\-dhcpd\-sqlite3\-config (3)
+.SH AUTHOR
+Gary L. Greene, Jr.
+.SH COPYRIGHT
+Copyright \(co 2026 YggdrasilSoft, LLC. Licensed under the Apache License,
+Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+.SH BUGS
+Report issues at
+.IR https://github.com/greeneg/go-dhcpd/issues .

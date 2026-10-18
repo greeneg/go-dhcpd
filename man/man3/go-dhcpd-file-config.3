@@ -1,0 +1,192 @@
+.TH FILE-CONFIG 3 "October 2026" "go-dhcpd 1.8.0" "go-dhcpd Plugin Interface"
+.SH NAME
+file-config \- read-only go-dhcpd config-provider plugin backed by config.json5
+.SH SYNOPSIS
+.I <install_prefix>/lib/go-dhcpd/plugins/file-config.plugin
+.SH DESCRIPTION
+.B file-config
+is a go-dhcpd config-provider plugin, not a standalone command-line
+program.
+.B "It is not meant to be run directly from a shell."
+It is spawned as a subprocess by
+.BR dhcpd (8)
+once per request: the daemon writes one JSON-encoded request to the
+plugin's standard input and closes it, the plugin writes one
+JSON-encoded response to standard output, and the process exits. See
+.B PROTOCOL
+below for the exact message shapes.
+.PP
+If
+.B file-config
+is executed interactively (standard input attached to a terminal), it
+prints a warning explaining that it is a plugin and exits with status 1
+instead of blocking on input; see
+.B DIAGNOSTICS
+below.
+.PP
+.B file-config
+is
+.BR read\-only :
+it reports the
+.B subnets
+and
+.B static
+arrays already present in a go-dhcpd configuration file (by default the
+daemon's own
+.BR config.json5 (5),
+or another file named by the
+.B config_path
+setting \(em see
+.BR CONFIGURATION ),
+reproducing go-dhcpd's original, pre-plugin behavior. Every
+write action defined by the protocol is accepted but rejected with an
+error response; it exists to preserve read access to file-based
+configuration while the plugin architecture is adopted, not to make
+that configuration mutable through the API. Use
+.BR go\-dhcpd\-sqlite3\-config (3)
+instead for a plugin that supports create/update/delete operations.
+.SH CONFIGURATION
+.B file-config
+is selected and configured through
+.B plugins.config_provider
+in
+.BR go\-dhcpd\-config.json5 (5):
+.PP
+.RS
+.nf
+"plugins": {
+  "config_provider": {
+    "name": "file-config",
+    "settings": { "config_path": "/etc/go-dhcpd/config.json5" }
+  }
+}
+.fi
+.RE
+.TP
+.BR config_path " (string, settings key)"
+Path to the go-dhcpd JSON5 configuration file to read
+.B subnets
+and
+.B static
+from. When not explicitly set, the daemon defaults this to its own
+configuration file's path, so omitting it reads the same file the
+daemon itself was started with.
+.SH PROTOCOL
+Each invocation reads exactly one JSON request object from standard
+input:
+.TP
+.B version
+(integer) Protocol version; currently always 1.
+.TP
+.B action
+(string) The operation requested; see
+.B ACTIONS
+below.
+.TP
+.B settings
+(object) The plugin's configured settings, copied from
+.B plugins.config_provider.settings
+(see
+.BR CONFIGURATION ).
+.TP
+.B data
+(any, action-specific) Request payload; unused by every action
+.B file-config
+supports, since it never accepts new data to store.
+.PP
+Exactly one JSON response object is written to standard output:
+.TP
+.B status
+(string) One of
+.BR success " or " error .
+.TP
+.B message
+(string, on error) A human-readable description of the failure.
+.TP
+.B data
+(any, on success) Action-specific result payload.
+.SH ACTIONS
+.TP
+.B capabilities
+Returns
+.BR name ", " version ", and " writable
+(always
+.BR false ).
+.TP
+.B get_subnets
+Returns the
+.B subnets
+array from the configuration file named by
+.BR config_path ,
+in the same shape documented under
+.B SUBNETS
+in
+.BR go\-dhcpd\-config.json5 (5).
+.TP
+.B get_static_hosts
+Returns the
+.B static
+array from the same file, in the shape documented under
+.B STATIC
+in
+.BR go\-dhcpd\-config.json5 (5).
+MAC addresses are normalized to lowercase.
+.TP
+.BR add_subnet ", " update_subnet ", " delete_subnet ", " add_static_host ", " update_static_host ", " delete_static_host
+Rejected with a
+.B status
+of
+.B error
+and a message stating that the plugin is read-only. The go-dhcpd REST
+API maps this to
+.B 403 Forbidden
+for the corresponding
+.B /subnets
+and
+.B /static
+write endpoints.
+.PP
+Any other
+.B action
+value is rejected with a
+.B status
+of
+.B error
+and an "unknown action" message.
+.SH DIAGNOSTICS
+When standard input is a terminal (i.e. the binary was launched
+directly by a user rather than by
+.BR dhcpd (8)),
+.B file-config
+prints:
+.PP
+.RS
+.nf
+This binary is a go-dhcpd plugin (file-config).
+These are not meant to be executed directly.
+Please run go-dhcpd itself, which will invoke this plugin automatically.
+.fi
+.RE
+.PP
+to standard error and exits with status 1, without attempting to read a
+request.
+.SH FILES
+.TP
+.I /usr/local/lib/go-dhcpd/plugins/file-config.plugin
+Default install location (actual prefix depends on
+.B INSTALL_PREFIX
+used at build/install time; see
+.BR dhcpd (8)).
+.SH SEE ALSO
+.BR dhcpd (8),
+.BR go\-dhcpd\-sqlite3\-config (3),
+.BR go\-dhcpd\-config.json5 (5),
+.BR go\-dhcpd\-migration\-tool (8)
+.SH AUTHOR
+Gary L. Greene, Jr.
+.SH COPYRIGHT
+Copyright \(co 2026 YggdrasilSoft, LLC. Licensed under the Apache License,
+Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+.SH BUGS
+Report issues at
+.IR https://github.com/greeneg/go-dhcpd/issues .

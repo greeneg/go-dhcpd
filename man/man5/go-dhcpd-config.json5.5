@@ -1,0 +1,326 @@
+.TH GO-DHCPD-CONFIG.JSON5 5 "October 2026" "go-dhcpd 1.8.0" "File Formats"
+.SH NAME
+go-dhcpd-config.json5 \- configuration file format for the go-dhcpd daemon
+.SH SYNOPSIS
+.I /etc/go-dhcpd/config.json5
+.SH DESCRIPTION
+.B config.json5
+is the JSON5 configuration file read by
+.BR dhcpd (8)
+at startup (see
+.BR \-\-config
+in
+.BR dhcpd (8)
+to use a path other than the default). It is a single JSON object with
+five top-level members:
+.BR global ", " auth ", " plugins ", " subnets ", and " static .
+.PP
+The
+.B subnets
+and
+.B static
+arrays are only meaningful when the active config-provider plugin is
+.BR go\-dhcpd\-file\-config (3),
+which reads them directly from this file. When
+.BR go\-dhcpd\-sqlite3\-config (3)
+is the active plugin, subnet and static-host data instead lives in its
+SQLite3 database, and the
+.B subnets
+/
+.B static
+arrays in this file are ignored (see
+.BR go\-dhcpd\-migration\-tool (8)
+for moving existing data between the two).
+.SH FILE FORMAT
+.B config.json5
+is parsed as JSON5, a superset of JSON that is more forgiving to hand-edit:
+.TP
+.B \(bu
+.B //
+line comments and
+.B /* */
+block comments are permitted anywhere.
+.TP
+.B \(bu
+Trailing commas are permitted in objects and arrays.
+.TP
+.B \(bu
+Object keys may be unquoted identifiers, though this file consistently
+uses quoted string keys for clarity.
+.TP
+.B \(bu
+Single-quoted strings are accepted in addition to double-quoted strings.
+.PP
+.B Caveat:
+an object whose body contains only comments and no actual member, e.g.
+.RS
+.nf
+"settings": { // nothing configured yet
+}
+.fi
+.RE
+fails to parse. Use a truly empty object instead, \fI"settings": {}\fP,
+and keep any explanatory comment outside the braces.
+.SH GLOBAL
+The
+.B global
+object controls server-wide behavior and is required.
+.TP
+.BR lease_time " (integer, seconds, default " 86400 )
+Default DHCP lease duration offered to clients.
+.TP
+.BR netbios_node_type " (integer, default " 8 )
+Default NetBIOS node type advertised to clients (option 46) unless
+overridden per-subnet.
+.RB "Valid values: " 1 " (B-node), " 2 " (P-node), " 4 " (M-node), " 8
+(H-node, recommended).
+.TP
+.BR ping_timeout " (integer, milliseconds, default " 1000 )
+How long the allocator waits for an ICMP echo reply when checking that a
+candidate address is unused before offering it.
+.TP
+.BR ping_retries " (integer, default " 2 )
+Number of ping attempts made against a candidate address before it is
+considered free.
+.TP
+.BR database_path " (string, default " /var/lib/go-dhcpd/dhcpd.db )
+Path to the daemon's lease-tracking SQLite3 database (distinct from any
+database used by the
+.B sqlite3-config
+plugin).
+.TP
+.BR listen_address " (string, default " 0.0.0.0 )
+IP address the UDP port-67 listener binds to, for unicast and
+relay-agent traffic.
+.B Deprecated:
+prefer
+.B listen_interface
+to restrict both the UDP and raw-socket listeners to one NIC.
+.TP
+.BR listen_interface " (string, default empty \(em all interfaces)"
+Network interface name (e.g.
+.IR eth0 ", " ens33 )
+that both the raw AF_PACKET listener and the UDP port-67 listener are
+restricted to. Leave empty to listen on all interfaces.
+.TP
+.BR api_port " (integer, default " 18467 )
+TCP port the REST API listens on.
+.TP
+.B tls
+(object) Controls whether the REST API is served over HTTPS instead of
+plain HTTP. See
+.B TLS
+below.
+.SS TLS
+Nested under
+.BR global.tls .
+.TP
+.BR enabled " (boolean, default " false )
+Serve the REST API over HTTPS. Strongly recommended whenever the API is
+reachable over anything but a fully trusted loopback/local link, since
+HTTP Basic Auth credentials are otherwise sent in the clear.
+.TP
+.B cert_file
+Path to a PEM-encoded certificate (chain), readable by the daemon.
+Required when
+.B enabled
+is true.
+.TP
+.B key_file
+Path to the matching PEM-encoded private key, readable by the daemon.
+Required when
+.B enabled
+is true.
+.PP
+The daemon enforces a minimum of TLS 1.2.
+.SH AUTH
+The
+.B auth
+object controls which non-root accounts may reach authenticated REST API
+endpoints. Credentials are verified via PAM (service
+.IR go\-dhcpd ,
+see
+.BR pam.d/ (5)
+files in the go-dhcpd source distribution);
+.B root
+is always authorized regardless of these lists.
+.TP
+.BR allowed_users " ([]string, default " [] )
+Local account names permitted to authenticate.
+.TP
+.BR allowed_groups " ([]string, default " [] )
+Local group names whose members are permitted to authenticate.
+.PP
+If both lists are empty, only
+.B root
+can reach authenticated endpoints.
+.SH PLUGINS
+The
+.B plugins
+object configures the daemon's config-provider plugin, under
+.BR plugins.config_provider .
+.TP
+.BR name " (string, default " file\-config )
+Plugin identifier, also used to derive the default
+.B path
+below.
+.TP
+.BR path " (string, optional)"
+Path to the plugin executable. When omitted, defaults to
+.IR \fI<plugin_dir>\fP/\fI<name>\fP.plugin ,
+where
+.I <plugin_dir>
+is the plugin directory baked into the
+.B dhcpd
+binary at build time (see
+.BR dhcpd (8)).
+.TP
+.BR settings " (object, default " {} )
+Plugin-specific settings, passed to the plugin on every invocation. The
+bundled
+.B file-config
+plugin reads
+.BR config_path " (string), which defaults to this configuration file's"
+own path when not set. The bundled
+.B sqlite3-config
+plugin requires
+.BR db_path " (string), the path to its SQLite3 database file."
+.SH SUBNETS
+.B subnets
+is an array of objects, each describing one IPv4 subnet served by the
+daemon. Only read when
+.B file-config
+is the active config-provider plugin.
+.TP
+.BR network " (string, required)"
+Subnet's network address, e.g.
+.IR 192.168.1.0 .
+.TP
+.BR netmask " (string, required)"
+Subnet mask, e.g.
+.IR 255.255.255.0 .
+.TP
+.BR dynamic_ranges " ([]object, default " [] )
+Dynamic allocation pools. Each entry has
+.BR start_address " and " end_address
+(strings, both inclusive IPv4 addresses).
+.TP
+.BR enable_bootp " (boolean, default " false )
+Whether BootP (as opposed to only DHCP) requests are served on this
+subnet.
+.TP
+.BR netbios_node_type " (integer, optional)"
+Per-subnet override of
+.BR global.netbios_node_type .
+.TP
+.BR domain_name_servers " ([]string, default " [] )
+DNS servers offered to clients (option 6).
+.TP
+.BR domain_name " (string, optional)"
+Domain name offered to clients (option 15).
+.TP
+.BR domain_search " ([]string, default " [] )
+DNS search list offered to clients (option 119).
+.TP
+.BR interface_mtu " (integer, optional)"
+Interface MTU offered to clients (option 26).
+.TP
+.BR ntp_servers " ([]string, default " [] )
+NTP servers offered to clients (option 42).
+.TP
+.BR time_servers " ([]string, default " [] )
+Time protocol (RFC 868) servers offered to clients (option 4).
+.TP
+.BR smtp_servers " ([]string, default " [] )
+SMTP servers offered to clients (option 69).
+.TP
+.BR lpr_servers " ([]string, default " [] )
+LPR servers offered to clients (option 71).
+.TP
+.BR netbios_name_servers " ([]string, default " [] )
+NetBIOS name (WINS) servers offered to clients (option 44).
+.TP
+.BR netbios_dd_servers " ([]string, default " [] )
+NetBIOS datagram distribution servers offered to clients (option 45).
+.TP
+.BR routers " ([]string, default " [] )
+Default gateway(s) offered to clients (option 3).
+.PP
+All IPv4-valued fields above (
+.BR network ", " netmask ", dynamic range addresses, and every " []string
+server-list field) must be valid IPv4 literals; IPv6 is not supported.
+.SH STATIC
+.B static
+is an array of objects, each a static (reserved) DHCP assignment. Only
+read when
+.B file-config
+is the active config-provider plugin.
+.TP
+.BR mac_address " (string, required)"
+Client hardware address, in
+.I aa:bb:cc:dd:ee:ff
+format. Must be a 6-byte Ethernet address; matching is case-insensitive.
+.TP
+.BR ip_address " (string, required)"
+Address to assign to this client. May be an IPv4 literal or a hostname
+resolved via DNS at allocation time.
+.TP
+.BR hostname " (string, optional)"
+Hostname offered to this client (option 12).
+.SH EXAMPLE
+.nf
+.RS
+{
+  "global": {
+    "lease_time": 86400,
+    "database_path": "/var/lib/go-dhcpd/dhcpd.db",
+    "listen_interface": "eth0",
+    "api_port": 18467
+  },
+  "auth": {
+    "allowed_users": ["admin"],
+    "allowed_groups": ["go-dhcpd-admins"]
+  },
+  "plugins": {
+    "config_provider": { "name": "file-config", "settings": {} }
+  },
+  "subnets": [
+    {
+      "network": "192.168.1.0",
+      "netmask": "255.255.255.0",
+      "dynamic_ranges": [
+        { "start_address": "192.168.1.100", "end_address": "192.168.1.163" }
+      ],
+      "domain_name_servers": ["192.168.1.1"],
+      "routers": ["192.168.1.1"]
+    }
+  ],
+  "static": [
+    { "mac_address": "aa:bb:cc:dd:ee:ff", "ip_address": "192.168.1.10",
+      "hostname": "server1.example.local" }
+  ]
+}
+.RE
+.fi
+.SH FILES
+.TP
+.I /etc/go-dhcpd/config.json5
+Default location read by
+.BR dhcpd (8).
+.TP
+.I /etc/go-dhcpd/config.json5.example
+Fully annotated example, installed by
+.BR "make install" .
+.SH SEE ALSO
+.BR dhcpd (8),
+.BR go\-dhcpd\-migration\-tool (8),
+.BR go\-dhcpd\-file\-config (3),
+.BR go\-dhcpd\-sqlite3\-config (3)
+.SH AUTHOR
+Gary L. Greene, Jr.
+.SH COPYRIGHT
+Copyright \(co 2026 YggdrasilSoft, LLC. Licensed under the Apache License,
+Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+.SH BUGS
+Report issues at
+.IR https://github.com/greeneg/go-dhcpd/issues .

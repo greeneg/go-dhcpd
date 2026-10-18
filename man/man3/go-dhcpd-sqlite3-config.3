@@ -1,0 +1,238 @@
+.TH SQLITE3-CONFIG 3 "October 2026" "go-dhcpd 1.8.0" "go-dhcpd Plugin Interface"
+.SH NAME
+sqlite3-config \- read/write go-dhcpd config-provider plugin backed by a SQLite3 database
+.SH SYNOPSIS
+.I <install_prefix>/lib/go-dhcpd/plugins/sqlite3-config.plugin
+.SH DESCRIPTION
+.B sqlite3-config
+is a go-dhcpd config-provider plugin, not a standalone command-line
+program.
+.B "It is not meant to be run directly from a shell."
+It is spawned as a subprocess by
+.BR dhcpd (8)
+once per request: the daemon writes one JSON-encoded request to the
+plugin's standard input and closes it, the plugin writes one
+JSON-encoded response to standard output, and the process exits. See
+.B PROTOCOL
+below for the exact message shapes.
+.PP
+If
+.B sqlite3-config
+is executed interactively (standard input attached to a terminal), it
+prints a warning explaining that it is a plugin and exits with status 1
+instead of blocking on input; see
+.B DIAGNOSTICS
+below.
+.PP
+Unlike
+.BR go\-dhcpd\-file\-config (3),
+.B sqlite3-config
+is a
+.BR "full-featured, read/write plugin" :
+it stores subnet and static-host definitions in a SQLite3 database
+(named by the
+.B db_path
+setting, see
+.BR CONFIGURATION )
+instead of a JSON5 configuration file, and implements every
+create/read/update/delete action defined by the protocol. This lets the
+go-dhcpd REST API's
+.B /subnets
+and
+.B /static
+endpoints perform normal CRUD operations against the data this plugin
+manages, rather than returning
+.BR "403 Forbidden" .
+Existing
+.B subnets
+/
+.B static
+data can be moved out of a
+.BR config.json5 (5)
+file and into a database usable by this plugin with
+.BR go\-dhcpd\-migration\-tool (8).
+.SH CONFIGURATION
+.B sqlite3-config
+is selected and configured through
+.B plugins.config_provider
+in
+.BR go\-dhcpd\-config.json5 (5):
+.PP
+.RS
+.nf
+"plugins": {
+  "config_provider": {
+    "name": "sqlite3-config",
+    "settings": { "db_path": "/var/lib/go-dhcpd/networks.db" }
+  }
+}
+.fi
+.RE
+.TP
+.BR db_path " (string, settings key, required)"
+Path to the SQLite3 database file. Created automatically, along with
+its schema, the first time the plugin opens it if it does not already
+exist.
+.SH PROTOCOL
+Each invocation reads exactly one JSON request object from standard
+input:
+.TP
+.B version
+(integer) Protocol version; currently always 1.
+.TP
+.B action
+(string) The operation requested; see
+.B ACTIONS
+below.
+.TP
+.B settings
+(object) The plugin's configured settings, copied from
+.B plugins.config_provider.settings
+(see
+.BR CONFIGURATION ).
+.TP
+.B data
+(object, action-specific) Request payload: a subnet or static-host
+object for add/update actions, or an identifying field for delete
+actions; see
+.B ACTIONS
+below.
+.PP
+Exactly one JSON response object is written to standard output:
+.TP
+.B status
+(string) One of
+.BR success ", " error ", or " validation_error .
+.B validation_error
+marks a rejection caused by invalid request data (missing/malformed
+fields, bad MAC address, non-IPv4 literal, etc.); the go-dhcpd REST API
+maps it to a 4xx response, as opposed to
+.BR error \'s
+5xx (execution/storage failures).
+.TP
+.B message
+(string, on error/validation_error) A human-readable description of
+the failure.
+.TP
+.B data
+(any, on success) Action-specific result payload.
+.SH ACTIONS
+.TP
+.B capabilities
+Returns
+.BR name ", " version ", and " writable
+(always
+.BR true ).
+.TP
+.B get_subnets
+Returns every stored subnet, in the shape documented under
+.B SUBNETS
+in
+.BR go\-dhcpd\-config.json5 (5).
+.TP
+.BR add_subnet " / " update_subnet
+.B data
+is a subnet object (see
+.B SUBNETS
+in
+.BR go\-dhcpd\-config.json5 (5)).
+Validated (network/netmask/dynamic-range/server-list fields must be
+valid IPv4) before being inserted or replacing the existing subnet with
+the same
+.BR network .
+.B update_subnet
+fails if no subnet with that
+.B network
+exists.
+.TP
+.B delete_subnet
+.B data
+is
+.RB { \(dq network\(dq : " " \(dq...\(dq }.
+Fails if no subnet with that
+.B network
+exists.
+.TP
+.B get_static_hosts
+Returns every stored static host, ordered by MAC address, in the shape
+documented under
+.B STATIC
+in
+.BR go\-dhcpd\-config.json5 (5).
+.TP
+.BR add_static_host " / " update_static_host
+.B data
+is a static-host object (see
+.B STATIC
+in
+.BR go\-dhcpd\-config.json5 (5)).
+.B mac_address
+must be a valid 6-byte Ethernet address (canonicalized and used as the
+lookup key) and
+.B ip_address
+must be non-empty.
+.B update_static_host
+fails if no static host with that
+.B mac_address
+exists.
+.TP
+.B delete_static_host
+.B data
+is
+.RB { \(dq mac_address\(dq : " " \(dq...\(dq }.
+Fails if no static host with that
+.B mac_address
+exists.
+.PP
+Any other
+.B action
+value is rejected with a
+.B status
+of
+.B error
+and an "unknown action" message.
+.SH DIAGNOSTICS
+When standard input is a terminal (i.e. the binary was launched
+directly by a user rather than by
+.BR dhcpd (8)),
+.B sqlite3-config
+prints:
+.PP
+.RS
+.nf
+This binary is a go-dhcpd plugin (sqlite3-config).
+These are not meant to be executed directly.
+Please run go-dhcpd itself, which will invoke this plugin automatically.
+.fi
+.RE
+.PP
+to standard error and exits with status 1, without attempting to read a
+request.
+.SH FILES
+.TP
+.I /usr/local/lib/go-dhcpd/plugins/sqlite3-config.plugin
+Default install location (actual prefix depends on
+.B INSTALL_PREFIX
+used at build/install time; see
+.BR dhcpd (8)).
+.TP
+.IR db_path " (configured, see " CONFIGURATION )
+SQLite3 database holding the
+.B subnets
+and
+.B static_hosts
+tables and their child tables; schema shared with
+.BR go\-dhcpd\-migration\-tool (8).
+.SH SEE ALSO
+.BR dhcpd (8),
+.BR go\-dhcpd\-file\-config (3),
+.BR go\-dhcpd\-config.json5 (5),
+.BR go\-dhcpd\-migration\-tool (8)
+.SH AUTHOR
+Gary L. Greene, Jr.
+.SH COPYRIGHT
+Copyright \(co 2026 YggdrasilSoft, LLC. Licensed under the Apache License,
+Version 2.0 <https://www.apache.org/licenses/LICENSE-2.0>.
+.SH BUGS
+Report issues at
+.IR https://github.com/greeneg/go-dhcpd/issues .

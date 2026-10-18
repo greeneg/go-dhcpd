@@ -206,8 +206,8 @@ Dynamic allocation pools. Each entry has
 (strings, both inclusive IPv4 addresses).
 .TP
 .BR enable_bootp " (boolean, default " false )
-Whether BootP (as opposed to only DHCP) requests are served on this
-subnet.
+Reserved BootP setting; currently stored but not used by the request handler.
+Enabling it does not cause BootP requests to be answered.
 .TP
 .BR netbios_node_type " (integer, optional)"
 Per-subnet override of

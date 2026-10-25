@@ -465,6 +465,10 @@ Two main tables:
 - SMTP Server (69)
 - Domain Search (119)
 
+See [Docs/UnimplementedDHCPOptions.md](Docs/UnimplementedDHCPOptions.md)
+for options that are *not* supported (including a few defined in code but
+not fully functional, like Hostname's one-way read-only handling above).
+
 ## Development
 
 ### Project Structure

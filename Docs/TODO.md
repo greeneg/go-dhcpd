@@ -68,10 +68,6 @@ What `dhcp-relayd` needs to add:
   topology (client / relay / server on separate networks); the existing
   harness only covers client+server on one shared network.
 
-## Dynamic DNS Handling (3.x feature)
-
-
-
 ## DHCP for IPv6 (3.x feature)
 
 This is not an incremental extension of the current server: DHCPv4 (RFC

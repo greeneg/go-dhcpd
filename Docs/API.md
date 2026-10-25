@@ -77,8 +77,11 @@ Get server version information.
 ```json
 {
   "name": "go-dhcpd",
-  "version": "1.0.0",
-  "author": "greeneg"
+  "version": "1.9.1",
+  "author": "Gary L. Greene Jr.",
+  "repository": "https://github.com/greeneg/go-dhcpd",
+  "license": "Apache-2.0 <https://www.apache.org/licenses/LICENSE-2.0>",
+  "description": "A simple and extensible DHCP server written in Go."
 }
 ```
 
@@ -124,6 +127,7 @@ Get detailed DHCP protocol statistics.
   "release_count": 12,
   "inform_count": 8,
   "decline_count": 1,
+  "boot_reply_count": 0,
   "packets_received": 1234,
   "packets_sent": 567,
   "errors": 2
@@ -139,6 +143,7 @@ Get detailed DHCP protocol statistics.
 - `release_count` - Number of DHCPRELEASE messages received
 - `inform_count` - Number of DHCPINFORM messages received
 - `decline_count` - Number of DHCPDECLINE messages received
+- `boot_reply_count` - Number of RFC 951 BOOTREPLYs sent (see [README](README.md#bootp-support))
 
 ---
 

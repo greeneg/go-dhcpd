@@ -1,7 +1,7 @@
 %global go_version 1.27rc3
 
 Name:           go-dhcpd
-Version:        1.9.0
+Version:        1.9.1
 Release:        1%{?dist}
 Summary:        A modern DHCP and BootP daemon written in Go
 
@@ -115,5 +115,8 @@ make lint
 %{_unitdir}/go-dhcpd.service
 
 %changelog
+* Sun Oct 25 2026 Gary L. Greene Jr. <greeneg@yggdrasilsoft.com> - 1.9.1-1
+- Add bootp packet statistics
+
 * Sun Oct 25 2026 Gary L. Greene Jr. <greeneg@yggdrasilsoft.com> - 1.9.0-1
 - Initial RPM packaging

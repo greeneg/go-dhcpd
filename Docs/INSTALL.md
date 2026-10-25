@@ -57,6 +57,9 @@ installs a systemd unit (with `ExecStart` already pointed at the packaged
 binary path) and the PAM profile matching the target distribution:
 
 ```bash
+mkdir -p "$(rpm --eval '%{_sourcedir}')"
+curl -fL https://github.com/greeneg/go-dhcpd/archive/refs/tags/v1.9.1.tar.gz \
+  -o "$(rpm --eval '%{_sourcedir}')/go-dhcpd-1.9.1.tar.gz"
 rpmbuild -bb go-dhcpd.spec
 sudo rpm -i ~/rpmbuild/RPMS/*/go-dhcpd-*.rpm
 ```

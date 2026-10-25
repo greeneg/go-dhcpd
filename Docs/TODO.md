@@ -225,11 +225,11 @@ at all today, but these existing pieces are directly relevant):
   into a zone file) as-is would be a DNS-injection risk; it needs to be
   validated/sanitized before it can be used as part of an FQDN.
 - `internal/dhcp/server.go`'s `leaseExpirationLoop` is a stub: it logs
-  "Running lease expiration check" on a timer and does nothing else (the
-  comment literally says "This would call db.ExpireLeases()", which
-  doesn't exist). Dynamic DNS needs to remove records when a lease
-  expires or is released, so this needs to actually expire leases first —
-  it's a prerequisite bug fix, not just a DDNS nice-to-have.
+  "Running lease expiration check" on a timer and does nothing else.
+  `Database.ExpireLeases` already exists in `internal/db/db.go` but is
+  never called here. Dynamic DNS needs to remove records when a lease
+  expires or is released, so wiring expiration into the loop is a
+  prerequisite bug fix, not just a DDNS nice-to-have.
 - Per [Docs/UnimplementedDHCPOptions.md](UnimplementedDHCPOptions.md),
   option 81 (Client FQDN, RFC 4702) is not implemented. Without it, the
   server can't tell whether a client wants to do its own forward-DNS

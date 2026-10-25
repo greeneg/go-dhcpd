@@ -52,6 +52,18 @@ func ValidateSubnet(s *config.SubnetConfig) error {
 			return fmt.Errorf("invalid dynamic range end address: %q (only IPv4 is supported)", r.EndAddress)
 		}
 	}
+	if s.NextServer != "" && !isIPv4(s.NextServer) {
+		return fmt.Errorf("invalid next_server address: %q (only IPv4 is supported)", s.NextServer)
+	}
+	// BootP's sname/file packet fields are fixed-size, null-terminated
+	// byte arrays (RFC 951 §3), so values must fit with room for the
+	// terminator.
+	if len(s.ServerHostname) > 63 {
+		return fmt.Errorf("server_hostname must be 63 bytes or fewer, got %d", len(s.ServerHostname))
+	}
+	if len(s.BootFilename) > 127 {
+		return fmt.Errorf("boot_filename must be 127 bytes or fewer, got %d", len(s.BootFilename))
+	}
 
 	for _, list := range []struct {
 		label  string

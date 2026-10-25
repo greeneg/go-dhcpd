@@ -33,6 +33,7 @@ type Stats struct {
 	ReleaseCount    uint64
 	InformCount     uint64
 	DeclineCount    uint64
+	BootReplyCount  uint64
 	PacketsReceived uint64
 	PacketsSent     uint64
 	Errors          uint64
@@ -219,8 +220,17 @@ func (s *Server) handleConnection(conn *net.UDPConn, connType string) {
 func (s *Server) handlePacket(packet *Packet, remoteAddr *net.UDPAddr) {
 	msgType, err := packet.GetMessageType()
 	if err != nil {
-		// Might be a BootP request
-		s.handleBootP()
+		// GetMessageType also errors when option 53 is present but has an
+		// invalid length -- and DHCP requests use the same BootRequest
+		// opcode as plain BOOTP. Check the option's presence directly so a
+		// malformed DHCP packet isn't misrouted into the BootP handler.
+		_, hasMsgTypeOption := packet.Options[OptionMessageType]
+		if !hasMsgTypeOption && packet.OpCode == BootRequest {
+			s.handleBootP(packet)
+		} else {
+			logger.Warning(fmt.Sprintf("Dropping unparseable packet from %s (opcode %d, no DHCP message type)", remoteAddr.IP, packet.OpCode))
+			s.stats.Errors++
+		}
 		return
 	}
 
@@ -366,12 +376,85 @@ func (s *Server) handleInform(packet *Packet) {
 	s.sendPacket(ack)
 }
 
-// handleBootP handles BootP requests
-func (s *Server) handleBootP() {
-	// Check if BootP is enabled
-	// For simplicity, we'll treat BootP like DHCP for now
-	logger.Debug("Received BootP request")
-	// BootP handling would be similar to DHCP but without lease times
+// handleBootP services a BOOTREQUEST per RFC 951. Unlike DHCP, BootP has no
+// dynamic allocation: a reply is sent only if the client's subnet has
+// bootp enabled AND the client has a pre-registered static lease; anything
+// else is silently ignored (the client will simply time out and retry).
+func (s *Server) handleBootP(packet *Packet) {
+	macAddr := packet.MACAddressString()
+
+	ip := s.allocator.StaticIPForMAC(macAddr)
+	if ip == nil {
+		logger.Warning(fmt.Sprintf("Ignoring BOOTREQUEST from %s: no static lease configured (RFC 951 requires static assignment)", macAddr))
+		return
+	}
+
+	subnet := s.findSubnetForIP(ip)
+	if subnet == nil {
+		logger.Error(fmt.Sprintf("Ignoring BOOTREQUEST from %s: no subnet configured for static IP %s", macAddr, ip))
+		return
+	}
+
+	if !subnet.EnableBootP {
+		logger.Debug(fmt.Sprintf("Ignoring BOOTREQUEST from %s: bootp disabled on subnet %s", macAddr, subnet.Network))
+		return
+	}
+
+	hostname := s.getHostname(packet)
+	if err := s.allocator.CreateLease(macAddr, ip, hostname, true); err != nil {
+		logger.Error(fmt.Sprintf("Failed to record lease for BOOTREQUEST from %s: %v", macAddr, err))
+		return
+	}
+
+	reply := s.createBootReply(packet, ip, subnet)
+	s.sendPacket(reply)
+	s.stats.BootReplyCount++
+
+	logger.Info(fmt.Sprintf("Sent BOOTREPLY to %s for IP %s", macAddr, ip))
+}
+
+// createBootReply builds an RFC 951 BOOTREPLY. It omits every DHCP-only
+// option (message type, server identifier, lease/renewal/rebinding times)
+// since plain BootP has no concept of leases or message types; subnet
+// options shared with DHCP (router, DNS, NTP, etc.) are still included via
+// the RFC 1497 vendor-extension/options area.
+func (s *Server) createBootReply(request *Packet, ip net.IP, subnet *config.SubnetConfig) *Packet {
+	reply := &Packet{
+		OpCode:  BootReply,
+		HwType:  request.HwType,
+		HwLen:   request.HwLen,
+		Hops:    0,
+		Xid:     request.Xid,
+		Secs:    0,
+		Flags:   request.Flags,
+		CIAddr:  request.CIAddr,
+		YIAddr:  ip.To4(),
+		SIAddr:  net.IPv4zero,
+		GIAddr:  request.GIAddr,
+		CHAddr:  request.CHAddr,
+		Options: make(map[byte][]byte),
+	}
+
+	if subnet.NextServer != "" {
+		if siaddr := net.ParseIP(subnet.NextServer); siaddr != nil {
+			reply.SIAddr = siaddr.To4()
+		}
+	} else if subnet.BootFilename != "" {
+		// A boot file is configured but no explicit TFTP/boot server was
+		// given; default to this daemon's own address rather than leaving
+		// siaddr at the unusable 0.0.0.0.
+		reply.SIAddr = s.serverIP.To4()
+	}
+	if subnet.ServerHostname != "" {
+		reply.SetServerHostname(subnet.ServerHostname)
+	}
+	if subnet.BootFilename != "" {
+		reply.SetBootFilename(subnet.BootFilename)
+	}
+
+	s.addSubnetOptions(reply, subnet)
+
+	return reply
 }
 
 // createOffer creates a DHCP OFFER packet

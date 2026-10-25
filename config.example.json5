@@ -77,6 +77,11 @@
         }
       ],
       "enable_bootp": false,
+      // Only used when enable_bootp is true; see static below. Clients
+      // without a matching static entry are never answered via BootP.
+      "next_server": "",       // BootP siaddr: TFTP/boot server IP, if not this daemon
+      "server_hostname": "",   // BootP sname: boot server hostname (max 63 bytes)
+      "boot_filename": "",     // BootP file: boot file path (max 127 bytes)
       "domain_name_servers": ["192.168.1.1", "8.8.8.8"],
       "domain_name": "example.local",
       "domain_search": ["example.local", "example.com"],

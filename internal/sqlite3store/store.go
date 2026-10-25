@@ -85,6 +85,9 @@ func EnsureSchema(db *sql.DB) error {
 		network TEXT NOT NULL UNIQUE,
 		netmask TEXT NOT NULL,
 		enable_bootp INTEGER NOT NULL DEFAULT 0,
+		next_server TEXT,
+		server_hostname TEXT,
+		boot_filename TEXT,
 		netbios_node_type INTEGER,
 		domain_name TEXT,
 		interface_mtu INTEGER,
@@ -114,6 +117,10 @@ func EnsureSchema(db *sql.DB) error {
 		return err
 	}
 
+	if err := migrateSubnetsTable(db); err != nil {
+		return err
+	}
+
 	for _, b := range stringListBindings {
 		stmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %[1]s (
@@ -132,11 +139,61 @@ func EnsureSchema(db *sql.DB) error {
 	return nil
 }
 
+// bootpSubnetColumns are the subnets columns added for BootP support
+// (config.SubnetConfig's NextServer/ServerHostname/BootFilename).
+// migrateSubnetsTable adds them to databases created before BootP existed.
+var bootpSubnetColumns = []struct {
+	name string
+	ddl  string
+}{
+	{"next_server", "ALTER TABLE subnets ADD COLUMN next_server TEXT"},
+	{"server_hostname", "ALTER TABLE subnets ADD COLUMN server_hostname TEXT"},
+	{"boot_filename", "ALTER TABLE subnets ADD COLUMN boot_filename TEXT"},
+}
+
+// migrateSubnetsTable adds any bootpSubnetColumns missing from an existing
+// subnets table. CREATE TABLE IF NOT EXISTS only creates the table on a
+// brand-new database; it is a no-op against a subnets table that already
+// exists from before BootP support, so without this, queries referencing
+// these columns fail with "no such column" on upgrade. Must run before any
+// such query, and is idempotent: already-migrated databases are untouched.
+func migrateSubnetsTable(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(subnets)`)
+	if err != nil {
+		return fmt.Errorf("failed to inspect subnets table: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to inspect subnets table: %w", err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to inspect subnets table: %w", err)
+	}
+	rows.Close()
+
+	for _, col := range bootpSubnetColumns {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := db.Exec(col.ddl); err != nil {
+			return fmt.Errorf("failed to add %s column to subnets table: %w", col.name, err)
+		}
+	}
+	return nil
+}
+
 // GetSubnets loads every subnet row along with its dynamic ranges and
 // string-list attributes.
 func GetSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
 	rows, err := db.Query(`
-		SELECT id, network, netmask, enable_bootp, netbios_node_type, domain_name, interface_mtu
+		SELECT id, network, netmask, enable_bootp, next_server, server_hostname, boot_filename, netbios_node_type, domain_name, interface_mtu
 		FROM subnets
 		ORDER BY network
 	`)
@@ -151,14 +208,24 @@ func GetSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
 		var id int64
 		var s config.SubnetConfig
 		var enableBootP int
+		var nextServer, serverHostname, bootFilename sql.NullString
 		var nodeType sql.NullInt64
 		var domainName sql.NullString
 		var mtu sql.NullInt64
 
-		if err := rows.Scan(&id, &s.Network, &s.Netmask, &enableBootP, &nodeType, &domainName, &mtu); err != nil {
+		if err := rows.Scan(&id, &s.Network, &s.Netmask, &enableBootP, &nextServer, &serverHostname, &bootFilename, &nodeType, &domainName, &mtu); err != nil {
 			return nil, err
 		}
 		s.EnableBootP = enableBootP != 0
+		if nextServer.Valid {
+			s.NextServer = nextServer.String
+		}
+		if serverHostname.Valid {
+			s.ServerHostname = serverHostname.String
+		}
+		if bootFilename.Valid {
+			s.BootFilename = bootFilename.String
+		}
 		if nodeType.Valid {
 			v := int(nodeType.Int64)
 			s.NetBIOSNodeType = &v
@@ -261,9 +328,10 @@ func InsertSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	defer tx.Rollback()
 
 	result, err := tx.Exec(
-		`INSERT INTO subnets (network, netmask, enable_bootp, netbios_node_type, domain_name, interface_mtu)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO subnets (network, netmask, enable_bootp, next_server, server_hostname, boot_filename, netbios_node_type, domain_name, interface_mtu)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		subnet.Network, subnet.Netmask, boolToInt(subnet.EnableBootP),
+		nullableString(subnet.NextServer), nullableString(subnet.ServerHostname), nullableString(subnet.BootFilename),
 		nullableInt(subnet.NetBIOSNodeType), nullableString(subnet.DomainName), nullableInt(subnet.InterfaceMTU),
 	)
 	if err != nil {
@@ -301,9 +369,10 @@ func UpdateSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	}
 
 	_, err = tx.Exec(
-		`UPDATE subnets SET netmask = ?, enable_bootp = ?, netbios_node_type = ?, domain_name = ?, interface_mtu = ?, updated_at = CURRENT_TIMESTAMP
+		`UPDATE subnets SET netmask = ?, enable_bootp = ?, next_server = ?, server_hostname = ?, boot_filename = ?, netbios_node_type = ?, domain_name = ?, interface_mtu = ?, updated_at = CURRENT_TIMESTAMP
 		 WHERE id = ?`,
 		subnet.Netmask, boolToInt(subnet.EnableBootP),
+		nullableString(subnet.NextServer), nullableString(subnet.ServerHostname), nullableString(subnet.BootFilename),
 		nullableInt(subnet.NetBIOSNodeType), nullableString(subnet.DomainName), nullableInt(subnet.InterfaceMTU),
 		subnetID,
 	)

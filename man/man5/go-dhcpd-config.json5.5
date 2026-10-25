@@ -206,8 +206,33 @@ Dynamic allocation pools. Each entry has
 (strings, both inclusive IPv4 addresses).
 .TP
 .BR enable_bootp " (boolean, default " false )
-Reserved BootP setting; currently stored but not used by the request handler.
-Enabling it does not cause BootP requests to be answered.
+Serves RFC 951 BOOTREQUESTs on this subnet. When enabled, only clients
+with a matching entry in
+.B static
+are answered; any other client's BOOTREQUEST is silently ignored, since
+BootP has no dynamic-allocation concept. See
+.BR next_server ", " server_hostname ", and " boot_filename
+below to supply boot-server information in the reply.
+.TP
+.BR next_server " (string, optional)"
+BootP
+.IR siaddr :
+the IPv4 address of the boot/TFTP server to use, if different from this
+daemon. When unset, defaults to this daemon's own address if
+.B boot_filename
+is set (so the field stays usable), otherwise left as
+.IR 0.0.0.0 .
+.TP
+.BR server_hostname " (string, optional, max 63 bytes)"
+BootP
+.IR sname :
+the boot server's hostname, included verbatim in replies when set.
+.TP
+.BR boot_filename " (string, optional, max 127 bytes)"
+BootP
+.IR file :
+the path to the boot file the client should fetch, included verbatim in
+replies when set.
 .TP
 .BR netbios_node_type " (integer, optional)"
 Per-subnet override of

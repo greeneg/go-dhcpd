@@ -309,6 +309,24 @@ func (p *Packet) SetLPRServers(servers []net.IP) {
 	p.Options[OptionLPRServer] = buf
 }
 
+// SetServerHostname sets the sname field (RFC 951 §3): the optional
+// null-terminated boot-server hostname. Names of 64 bytes or longer are
+// truncated to 63 bytes, reserving the final byte as the NUL terminator.
+func (p *Packet) SetServerHostname(name string) {
+	var buf [64]byte
+	copy(buf[:len(buf)-1], name)
+	p.SName = buf
+}
+
+// SetBootFilename sets the file field (RFC 951 §3): the optional
+// null-terminated boot filename. Names of 128 bytes or longer are
+// truncated to 127 bytes, reserving the final byte as the NUL terminator.
+func (p *Packet) SetBootFilename(name string) {
+	var buf [128]byte
+	copy(buf[:len(buf)-1], name)
+	p.File = buf
+}
+
 // SetNetBIOSNameServers sets NetBIOS name servers
 func (p *Packet) SetNetBIOSNameServers(servers []net.IP) {
 	var buf []byte

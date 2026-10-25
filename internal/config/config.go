@@ -83,6 +83,9 @@ type SubnetConfig struct {
 	Netmask            string         `json:"netmask"`
 	DynamicRanges      []DynamicRange `json:"dynamic_ranges"`
 	EnableBootP        bool           `json:"enable_bootp"`
+	NextServer         string         `json:"next_server"`       // BootP siaddr: boot/TFTP server IP, if not this daemon
+	ServerHostname     string         `json:"server_hostname"`   // BootP sname: boot server hostname (max 63 bytes)
+	BootFilename       string         `json:"boot_filename"`     // BootP file: boot file path (max 127 bytes)
 	NetBIOSNodeType    *int           `json:"netbios_node_type"` // Override global if set
 	DomainNameServers  []string       `json:"domain_name_servers"`
 	DomainName         string         `json:"domain_name"`

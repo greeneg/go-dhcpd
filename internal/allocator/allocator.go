@@ -129,6 +129,13 @@ func (a *Allocator) AllocateIP(macAddr string, requestedIP net.IP) (net.IP, erro
 	return nil, fmt.Errorf("no available IP addresses")
 }
 
+// StaticIPForMAC returns the statically assigned IP for macAddr, or nil if
+// none exists. Unlike AllocateIP, it never falls back to the dynamic pool;
+// BootP (RFC 951) must only ever serve pre-registered static clients.
+func (a *Allocator) StaticIPForMAC(macAddr string) net.IP {
+	return a.getStaticIP(macAddr)
+}
+
 // getStaticIP checks if there's a static assignment for the MAC address
 func (a *Allocator) getStaticIP(macAddr string) net.IP {
 	macAddr = config.NormalizeMAC(macAddr)

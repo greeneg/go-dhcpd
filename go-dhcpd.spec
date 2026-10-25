@@ -58,6 +58,18 @@ install -D -m 0644 go-dhcpd.service %{buildroot}%{_unitdir}/go-dhcpd.service
 # to this package's actual binary location.
 sed -i 's#/usr/local/bin/dhcpd#%{_bindir}/dhcpd#' %{buildroot}%{_unitdir}/go-dhcpd.service
 
+# `make install`'s own PAM-stack detection only installs
+# %{_sysconfdir}/pam.d/go-dhcpd if the *build host* already has
+# system-auth or common-auth; a minimal buildroot (e.g. mock) can have
+# neither, which would silently skip it and break the unconditional
+# %%files entry below. Install the target distribution's profile
+# explicitly instead, so it's always present regardless of build host.
+%if 0%{?suse_version}
+install -D -m 0644 pam.d/go-dhcpd.common-auth %{buildroot}%{_sysconfdir}/pam.d/go-dhcpd
+%else
+install -D -m 0644 pam.d/go-dhcpd.system-auth %{buildroot}%{_sysconfdir}/pam.d/go-dhcpd
+%endif
+
 %check
 export GOCACHE=%{_builddir}/%{name}-%{version}/.cache/go-build
 export GOPATH=%{_builddir}/%{name}-%{version}/.gopath

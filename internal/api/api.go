@@ -203,6 +203,7 @@ func (a *API) dhcpStatsHandler(c *gin.Context) {
 		"release_count":    stats.ReleaseCount,
 		"inform_count":     stats.InformCount,
 		"decline_count":    stats.DeclineCount,
+		"boot_reply_count": stats.BootReplyCount,
 		"packets_received": stats.PacketsReceived,
 		"packets_sent":     stats.PacketsSent,
 		"errors":           stats.Errors,

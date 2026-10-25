@@ -208,3 +208,69 @@ What adding another lease-storage engine requires:
   so a default build doesn't have to link every driver — the project
   already pays a cgo cost for `mattn/go-sqlite3` and `msteinert/pam/v2`
   and shouldn't grow that further by default.
+
+## Dynamic DNS Updates
+
+Goal: have the daemon create/update/remove forward (A) and reverse (PTR)
+DNS records as leases are issued, renewed, and released, the way ISC
+`dhcpd`'s `ddns-update-style` does.
+
+Relevant findings from the current codebase (there is no DNS-update code
+at all today, but these existing pieces are directly relevant):
+
+- `internal/dhcp/server.go`'s `getHostname` reads option 12 (Host Name)
+  verbatim into a Go string with **no validation at all** — no length
+  limit, no check against RFC 1035 label syntax, no rejection of `.`/
+  control characters. Feeding this straight into a DNS update (or even
+  into a zone file) as-is would be a DNS-injection risk; it needs to be
+  validated/sanitized before it can be used as part of an FQDN.
+- `internal/dhcp/server.go`'s `leaseExpirationLoop` is a stub: it logs
+  "Running lease expiration check" on a timer and does nothing else.
+  `Database.ExpireLeases` already exists in `internal/db/db.go` but is
+  never called here. Dynamic DNS needs to remove records when a lease
+  expires or is released, so wiring expiration into the loop is a
+  prerequisite bug fix, not just a DDNS nice-to-have.
+- Per [Docs/UnimplementedDHCPOptions.md](UnimplementedDHCPOptions.md),
+  option 81 (Client FQDN, RFC 4702) is not implemented. Without it, the
+  server can't tell whether a client wants to do its own forward-DNS
+  update, wants the server to do both forward and reverse, or is
+  suggesting a name the server is free to override — DDNS would have to
+  start in a "server always owns both records" mode rather than
+  RFC 4702's full negotiation.
+- `config.SubnetConfig.DomainName` and `config.StaticHost.Hostname`
+  already exist and could supply the forward zone / node name, but
+  there's no config for a DNS server address, update credentials, or
+  which zone(s) to update.
+- The Go standard library has no DNS UPDATE (RFC 2136) client; `net`'s
+  resolver only does lookups. A new dependency (e.g. `miekg/dns`) would
+  be needed for both constructing UPDATE messages and signing them.
+
+What implementing this requires:
+
+- An RFC 2136 DNS UPDATE client, authenticated via TSIG (RFC 2845) —
+  per-zone (or per-server) key name/algorithm/secret configuration, most
+  likely under a new `global.dynamic_dns` config section (server
+  address, forward zone, reverse zone, TSIG key material, record TTL).
+- Hostname sanitization for option 12 (and eventually validated/used
+  for option 81 once that's implemented) before it's ever used to build
+  an FQDN — reject or escape anything that isn't a valid RFC 1035 label.
+- Record lifecycle hooks: create/update on `Allocator.CreateLease`,
+  delete on `Allocator.ReleaseLease` and on actual lease expiration (see
+  the `leaseExpirationLoop` gap above) — both the forward A record and
+  the reverse PTR record (computed from the leased IP's `in-addr.arpa`
+  name) need to move together.
+- A conflict-resolution strategy for multiple clients claiming the same
+  hostname — ISC `dhcpd` uses DHCID records (RFC 4701/4703) for this;
+  without something equivalent, two clients requesting the same name
+  would silently overwrite each other's DNS records.
+- DNS updates must not block or fail lease issuance: do them
+  asynchronously (e.g. a goroutine/queue) with logging and limited
+  retry, similar in spirit to the existing ping-check pattern but
+  without holding up the DHCPACK on DNS server reachability.
+- Treat TSIG secrets as credentials from day one: the existing
+  "Insecure output that may leak credentials" item above already flags
+  `/config` serializing `plugins.settings` verbatim — any new DDNS
+  config section needs the same redaction before it ships, not added as
+  an afterthought.
+- Man-page (`go-dhcpd-config.json5(5)`) and README documentation for the
+  new config section once implemented.

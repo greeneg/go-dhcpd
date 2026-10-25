@@ -71,6 +71,19 @@ the daemon (`man dhcpd`), the migration tool (`man go-dhcpd-migration-tool`),
 the configuration file format (`man go-dhcpd-config.json5`), and the
 bundled plugins (`man 3 go-dhcpd-file-config`, `man 3 go-dhcpd-sqlite3-config`).
 
+### Install via RPM Package
+
+An RPM spec (`go-dhcpd.spec`) is provided for RHEL/Fedora/openSUSE-family
+systems. It builds via the same `make build`/`make install` targets
+(staged under `%{buildroot}` via `DESTDIR`), and additionally packages a
+systemd unit and the correct PAM profile for the target distribution:
+
+```bash
+rpmbuild -bb go-dhcpd.spec
+```
+
+See the spec file for `BuildRequires` and the exact file layout it installs.
+
 ## API Authentication
 
 `/health`, `/version` and the `/metrics` endpoints are always unauthenticated.
@@ -296,6 +309,33 @@ ip link show
 ifconfig -a
 ```
 
+## BootP Support
+
+`dhcpd` answers plain RFC 951 BOOTREQUESTs on any subnet with
+`enable_bootp` set. BootP has no dynamic-allocation concept, so this
+differs from DHCP in an important way: **a BOOTREQUEST is answered only
+if the client has a matching entry in `static`** — clients without one are
+silently ignored rather than given an address from `dynamic_ranges`.
+BOOTREPLYs omit every DHCP-only option (message type, lease/renewal/
+rebinding times, server identifier) but still carry the subnet's other
+options (router, DNS, NTP, etc.).
+
+Three additional per-subnet fields supply boot-server information in the
+reply:
+
+```json5
+{
+  "enable_bootp": true,
+  "next_server": "192.168.1.5",     // siaddr: TFTP/boot server IP
+  "server_hostname": "tftphost",    // sname (max 63 bytes)
+  "boot_filename": "pxelinux.0"     // file (max 127 bytes)
+}
+```
+
+All three are optional. If `boot_filename` is set but `next_server` isn't,
+`next_server` defaults to this daemon's own address rather than the
+otherwise-unusable `0.0.0.0`. See `man go-dhcpd-config.json5` for details.
+
 ## Usage
 
 ### Running the Daemon
@@ -306,14 +346,14 @@ ifconfig -a
 # Run with default config location
 sudo dhcpd
 
-# Run with custom config
-sudo dhcpd -config /path/to/config.json5
+# Run with custom config (-c/--config are equivalent)
+sudo dhcpd --config /path/to/config.json5
 
-# Run with stdout logging (for development)
-sudo dhcpd -stdout
+# Run with stdout logging instead of syslog (-o/--stdout)
+sudo dhcpd --stdout
 
-# Show version
-dhcpd -version
+# Show version (-v/--version) or help (-h/--help)
+dhcpd --version
 ```
 
 ### Using the Makefile
@@ -330,6 +370,9 @@ make test
 
 # Format and vet code
 make lint
+
+# Stage an install under a packaging buildroot instead of the real system
+make install DESTDIR=/path/to/buildroot INSTALL_PREFIX=/usr
 ```
 
 ## Web API
@@ -422,6 +465,10 @@ Two main tables:
 - SMTP Server (69)
 - Domain Search (119)
 
+See [Docs/UnimplementedDHCPOptions.md](Docs/UnimplementedDHCPOptions.md)
+for options that are *not* supported (including a few defined in code but
+not fully functional, like Hostname's one-way read-only handling above).
+
 ## Development
 
 ### Project Structure
@@ -444,8 +491,10 @@ go-dhcpd/
 │   ├── sqlite3store/    # Shared sqlite3-config / migration-tool storage layer
 │   └── logger/          # Logging
 ├── Docs/                # Documentation
+├── man/                 # man3/man5/man8 sources, installed by `make install`
 ├── config.example.json5 # Example config
 ├── Makefile            # Build automation
+├── go-dhcpd.spec        # RPM packaging spec
 └── README.md           # This file
 ```
 

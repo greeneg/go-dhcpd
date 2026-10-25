@@ -56,6 +56,8 @@ export GOPATH=%{_builddir}/%{name}-%{version}/.gopath
 make build INSTALL_PREFIX=%{_prefix}
 
 %install
+export GOCACHE=%{_builddir}/%{name}-%{version}/.cache/go-build
+export GOPATH=%{_builddir}/%{name}-%{version}/.gopath
 make install DESTDIR=%{buildroot} INSTALL_PREFIX=%{_prefix}
 
 install -D -m 0644 go-dhcpd.service %{buildroot}%{_unitdir}/go-dhcpd.service

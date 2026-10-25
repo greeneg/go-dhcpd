@@ -21,6 +21,11 @@ BuildRequires:  gcc
 BuildRequires:  pam-devel
 BuildRequires:  systemd-rpm-macros
 Requires:       pam
+# internal/allocator shells out to these for dynamic-address conflict
+# detection (ping) and MAC-of-squatter reporting (arp); a missing ping is
+# silently treated as "address free", so these must not be optional.
+Requires:       /usr/bin/ping
+Requires:       /usr/sbin/arp
 %{?systemd_requires}
 
 # mattn/go-sqlite3 compiles its own bundled sqlite3 amalgamation via cgo, so

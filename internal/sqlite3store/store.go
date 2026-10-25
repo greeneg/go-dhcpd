@@ -85,6 +85,9 @@ func EnsureSchema(db *sql.DB) error {
 		network TEXT NOT NULL UNIQUE,
 		netmask TEXT NOT NULL,
 		enable_bootp INTEGER NOT NULL DEFAULT 0,
+		next_server TEXT,
+		server_hostname TEXT,
+		boot_filename TEXT,
 		netbios_node_type INTEGER,
 		domain_name TEXT,
 		interface_mtu INTEGER,
@@ -136,7 +139,7 @@ func EnsureSchema(db *sql.DB) error {
 // string-list attributes.
 func GetSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
 	rows, err := db.Query(`
-		SELECT id, network, netmask, enable_bootp, netbios_node_type, domain_name, interface_mtu
+		SELECT id, network, netmask, enable_bootp, next_server, server_hostname, boot_filename, netbios_node_type, domain_name, interface_mtu
 		FROM subnets
 		ORDER BY network
 	`)
@@ -151,14 +154,24 @@ func GetSubnets(db *sql.DB) ([]config.SubnetConfig, error) {
 		var id int64
 		var s config.SubnetConfig
 		var enableBootP int
+		var nextServer, serverHostname, bootFilename sql.NullString
 		var nodeType sql.NullInt64
 		var domainName sql.NullString
 		var mtu sql.NullInt64
 
-		if err := rows.Scan(&id, &s.Network, &s.Netmask, &enableBootP, &nodeType, &domainName, &mtu); err != nil {
+		if err := rows.Scan(&id, &s.Network, &s.Netmask, &enableBootP, &nextServer, &serverHostname, &bootFilename, &nodeType, &domainName, &mtu); err != nil {
 			return nil, err
 		}
 		s.EnableBootP = enableBootP != 0
+		if nextServer.Valid {
+			s.NextServer = nextServer.String
+		}
+		if serverHostname.Valid {
+			s.ServerHostname = serverHostname.String
+		}
+		if bootFilename.Valid {
+			s.BootFilename = bootFilename.String
+		}
 		if nodeType.Valid {
 			v := int(nodeType.Int64)
 			s.NetBIOSNodeType = &v
@@ -261,9 +274,10 @@ func InsertSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	defer tx.Rollback()
 
 	result, err := tx.Exec(
-		`INSERT INTO subnets (network, netmask, enable_bootp, netbios_node_type, domain_name, interface_mtu)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO subnets (network, netmask, enable_bootp, next_server, server_hostname, boot_filename, netbios_node_type, domain_name, interface_mtu)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		subnet.Network, subnet.Netmask, boolToInt(subnet.EnableBootP),
+		nullableString(subnet.NextServer), nullableString(subnet.ServerHostname), nullableString(subnet.BootFilename),
 		nullableInt(subnet.NetBIOSNodeType), nullableString(subnet.DomainName), nullableInt(subnet.InterfaceMTU),
 	)
 	if err != nil {
@@ -301,9 +315,10 @@ func UpdateSubnet(db *sql.DB, subnet *config.SubnetConfig) error {
 	}
 
 	_, err = tx.Exec(
-		`UPDATE subnets SET netmask = ?, enable_bootp = ?, netbios_node_type = ?, domain_name = ?, interface_mtu = ?, updated_at = CURRENT_TIMESTAMP
+		`UPDATE subnets SET netmask = ?, enable_bootp = ?, next_server = ?, server_hostname = ?, boot_filename = ?, netbios_node_type = ?, domain_name = ?, interface_mtu = ?, updated_at = CURRENT_TIMESTAMP
 		 WHERE id = ?`,
 		subnet.Netmask, boolToInt(subnet.EnableBootP),
+		nullableString(subnet.NextServer), nullableString(subnet.ServerHostname), nullableString(subnet.BootFilename),
 		nullableInt(subnet.NetBIOSNodeType), nullableString(subnet.DomainName), nullableInt(subnet.InterfaceMTU),
 		subnetID,
 	)

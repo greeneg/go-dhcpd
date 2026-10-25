@@ -11,9 +11,9 @@ dhcpd \- go-dhcpd DHCP and BootP server daemon
 .SH DESCRIPTION
 .B dhcpd
 is the go-dhcpd daemon, a DHCP and BootP server implementing RFC 2131,
-RFC 2132, and related option-format RFCs. It allocates dynamic and static
-IPv4 leases, tracks them in a local SQLite3 database, and exposes a REST
-API for monitoring and administration.
+RFC 2132, RFC 951, and related option-format RFCs. It allocates dynamic
+and static IPv4 leases, tracks them in a local SQLite3 database, and
+exposes a REST API for monitoring and administration.
 .PP
 The daemon binds a raw AF_PACKET socket to receive broadcast DHCP traffic
 from clients that do not yet have an IP address (source 0.0.0.0), in
@@ -97,6 +97,23 @@ from
 .B file-config
 to
 .BR sqlite3-config .
+.SH BOOTP
+.B dhcpd
+answers plain RFC 951 BOOTREQUESTs on any subnet with
+.B enable_bootp
+set. Unlike DHCP, BootP has no dynamic-allocation concept: a BOOTREQUEST
+is answered only if the requesting client has a matching
+.B static
+entry; clients without one are silently ignored rather than given an
+address from a subnet's
+.BR dynamic_ranges .
+BOOTREPLYs omit every DHCP-only option (message type, lease/renewal/rebinding
+times, server identifier) but still carry the subnet's other
+options (router, DNS, NTP, etc.), plus boot-server information from
+.BR next_server ", " server_hostname ", and " boot_filename
+when configured. See
+.BR go\-dhcpd\-config.json5 (5)
+for these settings.
 .SH SIGNALS
 .TP
 .B SIGINT, SIGTERM

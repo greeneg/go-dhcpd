@@ -117,6 +117,10 @@ func EnsureSchema(db *sql.DB) error {
 		return err
 	}
 
+	if err := migrateSubnetsTable(db); err != nil {
+		return err
+	}
+
 	for _, b := range stringListBindings {
 		stmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %[1]s (
@@ -132,6 +136,56 @@ func EnsureSchema(db *sql.DB) error {
 		}
 	}
 
+	return nil
+}
+
+// bootpSubnetColumns are the subnets columns added for BootP support
+// (config.SubnetConfig's NextServer/ServerHostname/BootFilename).
+// migrateSubnetsTable adds them to databases created before BootP existed.
+var bootpSubnetColumns = []struct {
+	name string
+	ddl  string
+}{
+	{"next_server", "ALTER TABLE subnets ADD COLUMN next_server TEXT"},
+	{"server_hostname", "ALTER TABLE subnets ADD COLUMN server_hostname TEXT"},
+	{"boot_filename", "ALTER TABLE subnets ADD COLUMN boot_filename TEXT"},
+}
+
+// migrateSubnetsTable adds any bootpSubnetColumns missing from an existing
+// subnets table. CREATE TABLE IF NOT EXISTS only creates the table on a
+// brand-new database; it is a no-op against a subnets table that already
+// exists from before BootP support, so without this, queries referencing
+// these columns fail with "no such column" on upgrade. Must run before any
+// such query, and is idempotent: already-migrated databases are untouched.
+func migrateSubnetsTable(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(subnets)`)
+	if err != nil {
+		return fmt.Errorf("failed to inspect subnets table: %w", err)
+	}
+	existing := make(map[string]bool)
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return fmt.Errorf("failed to inspect subnets table: %w", err)
+		}
+		existing[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("failed to inspect subnets table: %w", err)
+	}
+	rows.Close()
+
+	for _, col := range bootpSubnetColumns {
+		if existing[col.name] {
+			continue
+		}
+		if _, err := db.Exec(col.ddl); err != nil {
+			return fmt.Errorf("failed to add %s column to subnets table: %w", col.name, err)
+		}
+	}
 	return nil
 }
 

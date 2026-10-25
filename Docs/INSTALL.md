@@ -64,9 +64,10 @@ rpmbuild -bb go-dhcpd.spec
 sudo rpm -i ~/rpmbuild/RPMS/*/go-dhcpd-*.rpm
 ```
 
-If you install this way, skip steps 1-2 and 5 below (building, manual
-install, and the systemd unit are all handled by the package); continue
-from step 3 to configure the server.
+If you install this way, skip steps 1-2 and the unit-copy/daemon-reload
+commands in step 5; the package handles those. Continue from step 3 to
+configure the server, then run `sudo systemctl enable --now go-dhcpd`
+before proceeding to step 6.
 
 ### 3. Configure the Server
 

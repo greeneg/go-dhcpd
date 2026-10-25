@@ -218,9 +218,10 @@ below to supply boot-server information in the reply.
 BootP
 .IR siaddr :
 the IPv4 address of the boot/TFTP server to use, if different from this
-daemon. Left as
-.I 0.0.0.0
-in replies when unset.
+daemon. When unset, defaults to this daemon's own address if
+.B boot_filename
+is set (so the field stays usable), otherwise left as
+.IR 0.0.0.0 .
 .TP
 .BR server_hostname " (string, optional, max 63 bytes)"
 BootP

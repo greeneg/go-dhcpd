@@ -439,6 +439,11 @@ func (s *Server) createBootReply(request *Packet, ip net.IP, subnet *config.Subn
 		if siaddr := net.ParseIP(subnet.NextServer); siaddr != nil {
 			reply.SIAddr = siaddr.To4()
 		}
+	} else if subnet.BootFilename != "" {
+		// A boot file is configured but no explicit TFTP/boot server was
+		// given; default to this daemon's own address rather than leaving
+		// siaddr at the unusable 0.0.0.0.
+		reply.SIAddr = s.serverIP.To4()
 	}
 	if subnet.ServerHostname != "" {
 		reply.SetServerHostname(subnet.ServerHostname)

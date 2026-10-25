@@ -90,11 +90,10 @@ for the authoritative option list if you need one not mentioned above.
 Not DHCP *options* per se, but related limitations worth noting alongside
 this list:
 
-- **DHCPINFORM** is handled, but the ACK it sends goes through the same
-  `addSubnetOptions` path as a normal lease ACK; it does not specifically
-  trim lease-related options (51/58/59) the way RFC 2131 §4.3.5 expects
-  for INFORM replies, since those aren't sent at all today (see the table
-  above).
+- **DHCPINFORM** is handled, but `handleInform` calls `createAck`, which
+  unconditionally adds Lease Time (51), contrary to RFC 2131 §4.3.5's
+  prohibition on lease-time parameters in INFORM replies. Renewal Time
+  (58) and Rebinding Time (59) are not sent by any current reply path.
 - **Option overload (option 52)** and using the `sname`/`file` fixed
   fields to carry additional DHCP options when the options area is full
   are both unimplemented; large option sets could theoretically exceed

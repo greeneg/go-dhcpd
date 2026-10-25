@@ -220,9 +220,12 @@ func (s *Server) handleConnection(conn *net.UDPConn, connType string) {
 func (s *Server) handlePacket(packet *Packet, remoteAddr *net.UDPAddr) {
 	msgType, err := packet.GetMessageType()
 	if err != nil {
-		// No DHCP message-type option: a plain RFC 951 BOOTREQUEST, or a
-		// malformed DHCP packet. Only the former is a BootP request.
-		if packet.OpCode == BootRequest {
+		// GetMessageType also errors when option 53 is present but has an
+		// invalid length -- and DHCP requests use the same BootRequest
+		// opcode as plain BOOTP. Check the option's presence directly so a
+		// malformed DHCP packet isn't misrouted into the BootP handler.
+		_, hasMsgTypeOption := packet.Options[OptionMessageType]
+		if !hasMsgTypeOption && packet.OpCode == BootRequest {
 			s.handleBootP(packet)
 		} else {
 			logger.Warning(fmt.Sprintf("Dropping unparseable packet from %s (opcode %d, no DHCP message type)", remoteAddr.IP, packet.OpCode))
